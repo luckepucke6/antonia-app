@@ -351,6 +351,217 @@
       .face, .toast { transition: none; }
       .view.active { animation: none; }
     }
+
+    /* ========================================================================
+       MEDICIN-VYN (escitalopram i omgångar)
+       Två tydligt åtskilda tillstånd: PÅGÅENDE omgång vs INGEN omgång.
+       ===================================================================== */
+
+    /* Morgon-påminnelse: visas bara under pågående omgång om idag inte bockats.
+       (Fallback för iOS, där schemalagda bakgrundsnotiser inte går att lita på.) */
+    .med-banner {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 14px;
+      padding: 14px 16px;
+      background: var(--accent);
+      color: #fff;
+      border-radius: var(--radius);
+      box-shadow: 0 4px 16px rgba(198, 138, 149, 0.35);
+    }
+    .med-banner .banner-icon { font-size: 1.5rem; line-height: 1; }
+    .med-banner .banner-text { flex: 1; font-weight: 600; font-size: 0.96rem; }
+    .med-banner .banner-btn {
+      flex: none;
+      padding: 9px 14px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--accent);
+      background: #fff;
+      border: none;
+      border-radius: 999px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* STATUS-kort – PÅGÅENDE omgång: varm accent-bakgrund + accent-kant. */
+    .status-card.active {
+      background: var(--accent-soft);
+      border: 1px solid var(--accent);
+      box-shadow: 0 1px 3px rgba(198, 138, 149, 0.18);
+    }
+    /* STATUS-kort – INGEN omgång: lugnt neutralt vitt kort. */
+    .status-card.idle { text-align: center; }
+
+    .status-eyebrow {
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    .status-card.idle .status-eyebrow { color: var(--muted); }
+
+    /* Stort "Dag X"-tal för pågående omgång */
+    .day-counter {
+      margin: 6px 0 2px;
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .status-sub { font-size: 0.9rem; color: var(--muted); }
+
+    /* Liten "✓ Tagen idag"-markering */
+    .taken-today {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 10px;
+      padding: 5px 12px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #3f7a5a;
+      background: #e4f1e8;
+      border-radius: 999px;
+    }
+
+    /* Dos-väljare (snabbval 5/10/15/20 mg), radio-liknande knapprad */
+    .dose-group {
+      display: flex;
+      gap: 8px;
+      margin: 12px 0 4px;
+    }
+    .dose-opt {
+      flex: 1;
+      min-height: 44px;
+      padding: 8px 0;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text);
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .dose-opt.selected {
+      color: #fff;
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    .dose-label {
+      font-size: 0.74rem;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
+    /* Stora primärknappen "Jag tog den idag" */
+    .btn.big { padding: 17px 16px; font-size: 1.08rem; }
+    .btn:disabled { opacity: 0.55; cursor: default; }
+
+    /* Rad för att logga en glömd dag bakåt i tiden */
+    .backdate-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .backdate-row input[type="date"] {
+      flex: 1;
+      min-width: 0;
+      padding: 10px 12px;
+      font: inherit;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+    }
+    .backdate-row .btn { margin-top: 0; width: auto; flex: none; padding: 10px 16px; }
+
+    /* Statistik-rader (när ingen omgång pågår) */
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      padding: 9px 0;
+    }
+    .stat-row + .stat-row { border-top: 1px solid var(--line); }
+    .stat-row .stat-val { font-weight: 700; font-size: 1.05rem; }
+    .stat-lead {
+      font-size: 1.05rem;
+      font-weight: 600;
+      text-align: center;
+      margin: 2px 0 4px;
+    }
+
+    /* HISTORIK – tidslinje över omgångar */
+    .course-item {
+      padding: 12px 0;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .course-item + .course-item { border-top: 1px solid var(--line); }
+    .course-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .course-dates { font-weight: 600; font-size: 0.96rem; }
+    .course-days { font-size: 0.85rem; color: var(--muted); white-space: nowrap; }
+    .course-tag {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    /* Liten visuell stapel vars bredd speglar antal dagar */
+    .course-bar {
+      height: 6px;
+      margin-top: 7px;
+      background: var(--accent-soft);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .course-bar > span {
+      display: block;
+      height: 100%;
+      background: var(--accent);
+      border-radius: 999px;
+    }
+
+    /* Utfälld lista med en omgångs loggade dagar */
+    .course-days-list { margin-top: 10px; }
+    .day-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 7px 0;
+      font-size: 0.92rem;
+    }
+    .day-row + .day-row { border-top: 1px solid var(--line); }
+    .day-del {
+      flex: none;
+      padding: 5px 10px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--accent);
+      background: var(--accent-soft);
+      border: none;
+      border-radius: 999px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .empty-hint {
+      color: var(--muted);
+      font-size: 0.92rem;
+      text-align: center;
+      padding: 6px 0;
+    }
   </style>
 </head>
 
@@ -373,12 +584,59 @@
 
     <!-- 2. Daglig måendecheck -->
     <section id="view-maende" class="view">
-      <p class="placeholder">Här loggar du dagens mående (skattningar, fritext, sömn).</p>
+      <!-- Datum för check-in:en (default idag, går att bläddra bakåt) -->
+      <div class="date-nav">
+        <button class="nav-btn" id="mood-prev" aria-label="Föregående dag">‹</button>
+        <div class="date-label">
+          <span id="mood-date-text">–</span>
+          <span class="date-badge" id="mood-date-badge"></span>
+        </div>
+        <button class="nav-btn" id="mood-next" aria-label="Nästa dag">›</button>
+      </div>
+
+      <!-- KÄNSLOR – skattningsraderna genereras av JS -->
+      <div class="card">
+        <p class="group-title" style="margin-top:0;">Känslor</p>
+        <div id="metrics-kanslor"></div>
+      </div>
+
+      <!-- KROPP -->
+      <div class="card">
+        <p class="group-title" style="margin-top:0;">Kropp</p>
+        <div id="metrics-kropp"></div>
+      </div>
+
+      <!-- SÖMN: antal timmar (stegare/inmatning) + sömnkvalitet -->
+      <div class="card">
+        <p class="group-title" style="margin-top:0;">Sömn</p>
+        <div class="metric">
+          <div class="metric-label">Antal timmar sovna</div>
+          <div class="sleep-row">
+            <button class="stepper" id="sleep-minus" aria-label="Minska">−</button>
+            <input type="number" id="sleep-hours" inputmode="decimal"
+                   step="0.5" min="0" max="14" placeholder="t.ex. 7,5" />
+            <button class="stepper" id="sleep-plus" aria-label="Öka">+</button>
+            <span class="unit">tim</span>
+          </div>
+        </div>
+        <div id="metrics-somn"></div>
+      </div>
+
+      <!-- ÖVRIGT: valfri fritext -->
+      <div class="card">
+        <p class="group-title" style="margin-top:0;">Övrigt</p>
+        <textarea class="note" id="mood-note"
+                  placeholder="Valfritt – triggers, tankar, mat som påverkat magen …"></textarea>
+      </div>
+
+      <div class="save-bar">
+        <button class="btn" id="btn-save-mood">Spara</button>
+      </div>
     </section>
 
-    <!-- 3. Medicin (escitalopram) -->
+    <!-- 3. Medicin (escitalopram) – allt innehåll renderas av JS (sektion e). -->
     <section id="view-medicin" class="view">
-      <p class="placeholder">Här loggar du intag av escitalopram.</p>
+      <div id="medicin-content"></div>
     </section>
 
     <!-- 4. Blödningar -->
@@ -401,6 +659,9 @@
       </div>
     </section>
   </main>
+
+  <!-- Liten bekräftelse-bubbla (delas av alla vyer) -->
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <!-- =======================================================================
        FLIK-RAD
@@ -445,6 +706,8 @@
       viewTitle.textContent = title;
       // Skrolla upp så ny vy börjar i toppen
       window.scrollTo(0, 0);
+      // Medicin-vyn byggs om från databasen varje gång den visas (färsk data).
+      if (name === "medicin") renderMedicin();
     }
 
     tabbar.addEventListener("click", (e) => {
@@ -455,14 +718,18 @@
 
     /* ======================================================================
        b) INDEXEDDB – liten hjälpmodul
-          Tre object stores som fylls på senare:
+          Object stores:
             mood        – nyckel = datum (YYYY-MM-DD), en post per dag
-            medication  – auto-id, fält t.ex. { date, batchId }
+            medication  – auto-id, en post per loggad dag:
+                          { id, date, omgangId, dos }
             bleeding    – auto-id, fält t.ex. { date, type, flow, mood }
+            courses     – nyckel = omgangId, en post per medicin-omgång (kur):
+                          { omgangId, startdatum, slutdatum, active }
        =================================================================== */
     const DB_NAME = "antonia-dagbok";
-    const DB_VERSION = 1;
-    const STORES = ["mood", "medication", "bleeding"];
+    // v2: lade till "courses"-store för escitalopram-omgångar.
+    const DB_VERSION = 2;
+    const STORES = ["mood", "medication", "bleeding", "courses"];
 
     let _dbPromise = null;
 
@@ -483,6 +750,10 @@
           }
           if (!db.objectStoreNames.contains("bleeding")) {
             db.createObjectStore("bleeding", { keyPath: "id", autoIncrement: true });
+          }
+          // courses: en post per medicin-omgång, omgangId som nyckel (upsert).
+          if (!db.objectStoreNames.contains("courses")) {
+            db.createObjectStore("courses", { keyPath: "omgangId" });
           }
         };
         req.onsuccess = () => resolve(req.result);
@@ -523,8 +794,13 @@
       return _tx(store, "readwrite", (os) => os.clear());
     }
 
+    // Ta bort en enskild post via nyckel (t.ex. en felregistrerad medicin-dag).
+    function deleteRecord(store, key) {
+      return _tx(store, "readwrite", (os) => os.delete(key));
+    }
+
     // Gör hjälparna nåbara i konsolen så du lätt kan testa medan du bygger.
-    window.db = { openDB, addRecord, getRecord, getAll, clearStore, STORES };
+    window.db = { openDB, addRecord, getRecord, getAll, clearStore, deleteRecord, STORES };
 
     /* ======================================================================
        c) EXPORT / IMPORT av all data (Inställningar)
@@ -618,6 +894,569 @@
     });
 
     /* ======================================================================
+       e) MÅENDEVY – daglig check-in
+          En post/dag i "mood" (nyckel = datum). Värdena 1–5 representeras av
+          emoji-ansikten; oifyllt sparas inte. Sömntimmar + fritext är fria fält.
+       =================================================================== */
+
+    // Två emoji-skalor beroende på metrikens riktning:
+    //   valence   – högt = bra  (😢 … 😄)
+    //   intensity – högt = mer/sämre (😌 lugn … 😣 överväldigad)
+    // Höger ansikte betyder alltid "mer/intensivare" och matchar etiketten.
+    const EMOJI = {
+      valence:   ["😢", "😕", "😐", "🙂", "😄"],
+      intensity: ["😌", "🙂", "😐", "😟", "😣"],
+    };
+
+    // Konfiguration som driver renderingen av alla skattningsrader.
+    // group bestämmer vilken container raden hamnar i.
+    const MOOD_METRICS = [
+      // KÄNSLOR
+      { id: "humor",         group: "kanslor", label: "Humör",                 scale: "valence",   low: "dåligt", high: "bra" },
+      { id: "irritabilitet", group: "kanslor", label: "Irritabilitet",         scale: "intensity", low: "lite",   high: "mycket" },
+      { id: "angest",        group: "kanslor", label: "Ångest / oro",          scale: "intensity", low: "lite",   high: "mycket" },
+      { id: "kanslighet",    group: "kanslor", label: "Känslighet",            scale: "intensity", low: "lite",   high: "mycket" },
+      { id: "intensitet",    group: "kanslor", label: "Intensitet på känslor", scale: "intensity", low: "lite",   high: "mycket" },
+      { id: "delusion",      group: "kanslor", label: "Grad av delusion",      scale: "intensity", low: "ingen",  high: "stark" },
+      // KROPP
+      { id: "energi",        group: "kropp",   label: "Energi",                scale: "valence",   low: "lågt",   high: "högt" },
+      { id: "magbesvar",     group: "kropp",   label: "Magbesvär (IBS/PCOS)",  scale: "intensity", low: "inga",   high: "mycket" },
+      { id: "stress",        group: "kropp",   label: "Stress / kortisol",     scale: "intensity", low: "lite",   high: "mycket" },
+      // SÖMN (kvalitet; antal timmar hanteras separat)
+      { id: "sleepQuality",  group: "somn",    label: "Hur du sov",            scale: "valence",   low: "dåligt", high: "bra" },
+    ];
+
+    // --- State för den dag som visas ---
+    let moodDate = todayISO();   // YYYY-MM-DD
+    let selections = {};         // { metrikId: 1..5 } – bara ifyllda
+
+    // Lägg till n dagar på en YYYY-MM-DD-sträng och returnera ny sträng.
+    function shiftDate(iso, days) {
+      const d = new Date(iso + "T00:00:00");
+      d.setDate(d.getDate() + days);
+      return d.toISOString().slice(0, 10);
+    }
+
+    // Bygg alla skattningsrader en gång och lägg i rätt grupp-container.
+    function buildMetricRows() {
+      const containers = {
+        kanslor: document.getElementById("metrics-kanslor"),
+        kropp:   document.getElementById("metrics-kropp"),
+        somn:    document.getElementById("metrics-somn"),
+      };
+
+      MOOD_METRICS.forEach((m) => {
+        const faces = EMOJI[m.scale]
+          .map((emoji, i) =>
+            `<button class="face" type="button" data-id="${m.id}" ` +
+            `data-value="${i + 1}" aria-label="${i + 1} av 5">${emoji}</button>`)
+          .join("");
+
+        const row = document.createElement("div");
+        row.className = "metric";
+        row.innerHTML =
+          `<div class="metric-label">${m.label}</div>` +
+          `<div class="faces">${faces}</div>` +
+          `<div class="scale-ends"><span>${m.low}</span><span>${m.high}</span></div>`;
+
+        containers[m.group].appendChild(row);
+      });
+
+      // Event-delegation: ett klick på ett ansikte väljer (eller avmarkerar).
+      Object.values(containers).forEach((c) =>
+        c.addEventListener("click", (e) => {
+          const face = e.target.closest(".face");
+          if (face) selectFace(face.dataset.id, Number(face.dataset.value));
+        })
+      );
+    }
+
+    // Välj ett värde – eller avmarkera om man trycker på det redan valda.
+    function selectFace(id, value) {
+      if (selections[id] === value) delete selections[id];
+      else selections[id] = value;
+      renderMetric(id);
+    }
+
+    // Uppdatera ansiktenas markering för EN metrik.
+    function renderMetric(id) {
+      const selected = selections[id];
+      document.querySelectorAll(`.face[data-id="${id}"]`).forEach((face) => {
+        face.classList.toggle("selected", Number(face.dataset.value) === selected);
+      });
+    }
+
+    // Spegla hela state (alla metriker + sömntimmar + fritext) till DOM.
+    function renderSelections(rec) {
+      MOOD_METRICS.forEach((m) => renderMetric(m.id));
+      document.getElementById("sleep-hours").value =
+        rec && rec.sleepHours != null ? rec.sleepHours : "";
+      document.getElementById("mood-note").value = (rec && rec.note) || "";
+    }
+
+    // Formatera datumraden på svenska + badge "Idag"/"Igår".
+    function renderDateNav() {
+      const d = new Date(moodDate + "T00:00:00");
+      document.getElementById("mood-date-text").textContent =
+        new Intl.DateTimeFormat("sv-SE", {
+          weekday: "long", day: "numeric", month: "long",
+        }).format(d);
+
+      let badge = "";
+      if (moodDate === todayISO()) badge = "Idag";
+      else if (moodDate === shiftDate(todayISO(), -1)) badge = "Igår";
+      document.getElementById("mood-date-badge").textContent = badge;
+
+      // Ingen loggning i framtiden.
+      document.getElementById("mood-next").disabled = moodDate >= todayISO();
+    }
+
+    // Ladda en dags post och fyll formuläret (tomt om dagen saknas).
+    async function loadMoodForDate(dateISO) {
+      moodDate = dateISO;
+      const rec = await getRecord("mood", dateISO);
+      selections = rec && rec.scores ? { ...rec.scores } : {};
+      renderSelections(rec);
+      renderDateNav();
+    }
+
+    // Spara dagens post (put = upsert, ingen dubblett). Tomma fält utelämnas.
+    async function saveMood() {
+      const hoursRaw = document.getElementById("sleep-hours").value.trim();
+      const note = document.getElementById("mood-note").value.trim();
+
+      const record = {
+        date: moodDate,
+        scores: { ...selections },
+        updatedAt: new Date().toISOString(),
+      };
+      if (hoursRaw !== "") {
+        const h = parseFloat(hoursRaw.replace(",", "."));
+        if (!isNaN(h)) record.sleepHours = Math.min(14, Math.max(0, h));
+      }
+      if (note !== "") record.note = note;
+
+      await addRecord("mood", record);
+      showToast("Sparat ✓");
+    }
+
+    // --- Datum-knappar (bläddra bakåt; aldrig framåt förbi idag) ---
+    document.getElementById("mood-prev")
+      .addEventListener("click", () => loadMoodForDate(shiftDate(moodDate, -1)));
+    document.getElementById("mood-next").addEventListener("click", () => {
+      if (moodDate < todayISO()) loadMoodForDate(shiftDate(moodDate, 1));
+    });
+
+    // --- Sömn-stegare (0–14, halvtimmessteg) ---
+    function stepSleep(delta) {
+      const input = document.getElementById("sleep-hours");
+      const current =
+        input.value.trim() === "" ? 0 : parseFloat(input.value.replace(",", "."));
+      let next = (isNaN(current) ? 0 : current) + delta;
+      next = Math.min(14, Math.max(0, Math.round(next * 2) / 2));
+      input.value = next;
+    }
+    document.getElementById("sleep-minus")
+      .addEventListener("click", () => stepSleep(-0.5));
+    document.getElementById("sleep-plus")
+      .addEventListener("click", () => stepSleep(0.5));
+
+    // --- Spara-knapp ---
+    document.getElementById("btn-save-mood").addEventListener("click", saveMood);
+
+    // Liten bekräftelse-bubbla (återanvändbar av andra vyer).
+    let _toastTimer = null;
+    function showToast(msg) {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.classList.add("show");
+      clearTimeout(_toastTimer);
+      _toastTimer = setTimeout(() => el.classList.remove("show"), 1600);
+    }
+
+    // Bygg raderna och ladda dagens post direkt så vyn är redo.
+    buildMetricRows();
+    loadMoodForDate(todayISO());
+
+    /* ======================================================================
+       f) MEDICIN-VYN (escitalopram i omgångar)
+
+       Antonia tar inte medicinen dagligen, utan i "omgångar" (kurer): en serie
+       sammanhängande dagar, från att PMDS-symtomen börjar tills de släpper.
+       Datamodell:
+         - medication: en post per loggad dag { id, date, omgangId, dos }
+         - courses:    en post per omgång    { omgangId, startdatum, slutdatum, active }
+       Antal dagar i en omgång HÄRLEDS från medication-posterna (ingen dubbel
+       bokföring), så att tillagda/borttagna dagar alltid stämmer.
+       (showToast() återanvänds från Måendevyn ovan.)
+       =================================================================== */
+    const medicinContent = document.getElementById("medicin-content");
+
+    // Dos-snabbval (mg). Dos sätts per dag och kan skilja mellan dagar.
+    const DOSE_OPTIONS = [5, 10, 15, 20];
+    const DEFAULT_DOSE = 10;
+
+    // Vilken omgång som är "utfälld" i historiken (null = ingen).
+    let expandedCourse = null;
+
+    /* --- Datum- & textformat (svenska) --- */
+    const MED_MONTHS_SHORT = ["jan","feb","mar","apr","maj","jun",
+                              "jul","aug","sep","okt","nov","dec"];
+    const MED_MONTHS_LONG = ["januari","februari","mars","april","maj","juni",
+                             "juli","augusti","september","oktober","november","december"];
+
+    // Antal hela dygn mellan två YYYY-MM-DD-datum (b − a). Lokal tid.
+    function daysBetween(aISO, bISO) {
+      const a = new Date(aISO + "T00:00:00");
+      const b = new Date(bISO + "T00:00:00");
+      return Math.round((b - a) / 86400000);
+    }
+    function fmtShort(iso) {
+      const [, m, d] = iso.split("-").map(Number);
+      return d + " " + MED_MONTHS_SHORT[m - 1];
+    }
+    function fmtLong(iso) {
+      const [y, m, d] = iso.split("-").map(Number);
+      return d + " " + MED_MONTHS_LONG[m - 1] + " " + y;
+    }
+    // "1 dag" / "3 dagar"
+    function dagar(n) { return n + (n === 1 ? " dag" : " dagar"); }
+
+    /* --- Datahämtning --- */
+    async function getActiveCourse() {
+      const courses = await getAll("courses");
+      return courses.find((c) => c.active) || null;
+    }
+    async function getDaysFor(omgangId) {
+      const all = await getAll("medication");
+      return all
+        .filter((m) => m.omgangId === omgangId)
+        .sort((a, b) => a.date.localeCompare(b.date));
+    }
+
+    /* --- Dos-väljare (radio-liknande knapprad) --- */
+    function doseGroupHTML(id, selected) {
+      const opts = DOSE_OPTIONS.map((mg) =>
+        '<button type="button" class="dose-opt' +
+        (mg === selected ? " selected" : "") +
+        '" data-dose="' + mg + '">' + mg + "</button>"
+      ).join("");
+      return '<div class="dose-label">Dos (mg)</div>' +
+             '<div class="dose-group" id="' + id + '">' + opts + "</div>";
+    }
+    function getSelectedDose(groupEl) {
+      if (!groupEl) return DEFAULT_DOSE;
+      const sel = groupEl.querySelector(".dose-opt.selected");
+      return sel ? Number(sel.dataset.dose) : DEFAULT_DOSE;
+    }
+
+    /* --- Bygg STATUS-kortet (tydligt olika för pågående vs ingen omgång) --- */
+    function buildStatus(active, activeDays) {
+      // INGEN omgång: lugnt, neutralt kort med en enda inbjudande knapp.
+      if (!active) {
+        return '<div class="card status-card idle">' +
+          '<div class="status-eyebrow">Ingen pågående omgång</div>' +
+          '<p class="status-sub" style="margin:8px 0 0">Just nu loggar du ingen ' +
+            'escitalopram. När symtomen börjar kan du starta en ny omgång.</p>' +
+          doseGroupHTML("dose-start", DEFAULT_DOSE) +
+          '<button type="button" class="btn" data-act="start">Börja en ny omgång</button>' +
+          "</div>";
+      }
+
+      // PÅGÅENDE omgång: varmt accent-kort. "Dag X" = antal bockade dagar.
+      const taken = activeDays.some((d) => d.date === todayISO());
+      const n = activeDays.length;
+      let html = '<div class="card status-card active">';
+      html += '<div class="status-eyebrow">Pågående omgång</div>';
+      html += '<div class="day-counter">Dag ' + n + "</div>";
+      html += '<div class="status-sub">Startade ' + fmtLong(active.startdatum) + "</div>";
+      if (taken) html += '<div class="taken-today">✓ Tagen idag</div>';
+
+      // Dos-väljare visas bara om dagen inte redan är bockad.
+      if (!taken) html += doseGroupHTML("dose-today", DEFAULT_DOSE);
+      html += '<button type="button" class="btn big" data-act="today"' +
+              (taken ? " disabled" : "") + ">" +
+              (taken ? "✓ Redan bockad idag" : "Jag tog den idag") + "</button>";
+
+      // Logga en glömd dag bakåt i tiden (begränsat till omgångens intervall).
+      html += '<div class="dose-label" style="margin-top:16px">Glömt en dag? Logga i efterhand</div>';
+      html += doseGroupHTML("dose-backdate", DEFAULT_DOSE);
+      html += '<div class="backdate-row">' +
+              '<input type="date" id="backdate-input" min="' + active.startdatum +
+              '" max="' + todayISO() + '">' +
+              '<button type="button" class="btn" data-act="backdate">Lägg till</button></div>';
+
+      // Avsluta omgången (sätter slutdatum).
+      html += '<button type="button" class="btn secondary" data-act="end">Avsluta omgången</button>';
+      html += "</div>";
+      return html;
+    }
+
+    /* --- Bygg STATISTIK (visas bara när ingen omgång pågår) --- */
+    function buildStats(courses, daysByCourse) {
+      const ended = courses
+        .filter((c) => !c.active && c.slutdatum)
+        .sort((a, b) => a.startdatum.localeCompare(b.startdatum));
+
+      // Inget att visa förrän minst en omgång är avslutad – dölj snyggt.
+      if (ended.length === 0) return "";
+
+      // Dagar sedan den senast avslutade omgången.
+      const lastSlut = ended.reduce(
+        (mx, c) => (c.slutdatum > mx ? c.slutdatum : mx), ended[0].slutdatum
+      );
+      const since = daysBetween(lastSlut, todayISO());
+
+      // Snittlängd (antal loggade dagar) och snittligt mellanrum mellan omgångar.
+      const lengths = ended
+        .map((c) => (daysByCourse[c.omgangId] || []).length)
+        .filter((x) => x > 0);
+      const avgLen = lengths.length
+        ? Math.round(lengths.reduce((a, b) => a + b, 0) / lengths.length) : null;
+
+      const gaps = [];
+      for (let i = 1; i < ended.length; i++) {
+        gaps.push(daysBetween(ended[i - 1].slutdatum, ended[i].startdatum));
+      }
+      const avgGap = gaps.length
+        ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length) : null;
+
+      let html = '<div class="card">';
+      html += '<div class="status-eyebrow" style="color:var(--muted)">Mönster</div>';
+
+      // Lugn ledtext som hjälper henne ana nästa omgång (kräver ≥2 omgångar).
+      if (avgGap != null) {
+        const remaining = avgGap - since;
+        html += remaining > 3
+          ? '<p class="stat-lead">Om mönstret håller kan nästa omgång närma sig ' +
+              'om ungefär ' + dagar(remaining) + ".</p>"
+          : '<p class="stat-lead">Det är ungefär så här långt det brukar gå mellan ' +
+              "omgångar – håll lite extra koll. 💗</p>";
+      }
+
+      html += '<div class="stat-row"><span>Sedan förra omgången slutade</span>' +
+              '<span class="stat-val">' + dagar(since) + "</span></div>";
+      if (ended.length >= 2) {
+        if (avgLen != null)
+          html += '<div class="stat-row"><span>Snittlängd på en omgång</span>' +
+                  '<span class="stat-val">' + dagar(avgLen) + "</span></div>";
+        if (avgGap != null)
+          html += '<div class="stat-row"><span>Brukar gå mellan omgångar</span>' +
+                  '<span class="stat-val">' + dagar(avgGap) + "</span></div>";
+      }
+      html += "</div>";
+      return html;
+    }
+
+    /* --- Bygg HISTORIK (tidslinje, nyast först) --- */
+    function buildHistory(courses, daysByCourse) {
+      let html = '<h2 class="group-title">Historik</h2><div class="card">';
+      if (courses.length === 0) {
+        return html + '<p class="empty-hint">Inga omgångar loggade ännu.</p></div>';
+      }
+
+      const sorted = courses.slice()
+        .sort((a, b) => b.startdatum.localeCompare(a.startdatum));
+      // Längsta omgången styr stapelskalan.
+      const maxDays = Math.max(
+        1, ...courses.map((c) => (daysByCourse[c.omgangId] || []).length)
+      );
+
+      sorted.forEach((c) => {
+        const days = (daysByCourse[c.omgangId] || []).slice()
+          .sort((a, b) => a.date.localeCompare(b.date));
+        const n = days.length;
+        const dateLabel = c.active
+          ? fmtShort(c.startdatum) + " – pågår"
+          : fmtShort(c.startdatum) + " – " + fmtShort(c.slutdatum);
+
+        html += '<div class="course-item" data-act="toggle" data-course="' + c.omgangId + '">';
+        html += '<div class="course-head"><span class="course-dates">' + dateLabel +
+                (c.active ? ' <span class="course-tag">pågående</span>' : "") +
+                '</span><span class="course-days">' + dagar(n) + "</span></div>";
+        html += '<div class="course-bar"><span style="width:' +
+                Math.round((n / maxDays) * 100) + '%"></span></div>';
+
+        // Utfälld lista med omgångens dagar + möjlighet att ta bort en felregg dag.
+        if (expandedCourse === c.omgangId) {
+          html += '<div class="course-days-list">';
+          if (n === 0) {
+            html += '<p class="empty-hint">Inga loggade dagar.</p>';
+          } else {
+            days.forEach((d) => {
+              html += '<div class="day-row"><span>' + fmtLong(d.date) +
+                      (d.dos ? " · " + d.dos + " mg" : "") + "</span>" +
+                      '<button type="button" class="day-del" data-act="del-day" data-id="' +
+                      d.id + '">Ta bort</button></div>';
+            });
+          }
+          html += "</div>";
+        }
+        html += "</div>";
+      });
+
+      return html + "</div>";
+    }
+
+    // Bygg om hela Medicin-vyn från databasen. Anropas vid visning + efter åtgärd.
+    async function renderMedicin() {
+      const [courses, meds] = await Promise.all([
+        getAll("courses"), getAll("medication"),
+      ]);
+      const active = courses.find((c) => c.active) || null;
+
+      // Gruppera dagar per omgång (en gång) → härled antal & utfällning.
+      const daysByCourse = {};
+      for (const m of meds) {
+        (daysByCourse[m.omgangId] = daysByCourse[m.omgangId] || []).push(m);
+      }
+      const activeDays = active ? (daysByCourse[active.omgangId] || []) : [];
+      const takenToday = activeDays.some((d) => d.date === todayISO());
+
+      let html = "";
+      // Morgon-påminnelse (fallback): bara under pågående omgång + om ej bockad idag.
+      if (active && !takenToday) {
+        html += '<div class="med-banner"><span class="banner-icon">💊</span>' +
+                '<span class="banner-text">Dags att ta escitalopram idag</span>' +
+                '<button type="button" class="banner-btn" data-act="today">Bocka</button></div>';
+      }
+      html += buildStatus(active, activeDays);
+      if (!active) html += buildStats(courses, daysByCourse);
+      html += buildHistory(courses, daysByCourse);
+
+      medicinContent.innerHTML = html;
+    }
+
+    /* --- Åtgärder --- */
+
+    // Börja en ny omgång: skapa course + logga dagens dos.
+    async function startCourse() {
+      const dose = getSelectedDose(document.getElementById("dose-start"));
+      const today = todayISO();
+      const omgangId = "c" + Date.now();
+      await addRecord("courses", {
+        omgangId, startdatum: today, slutdatum: null, active: true,
+      });
+      await addRecord("medication", { date: today, omgangId, dos: dose });
+      requestNotifPermission(); // be om notis-lov nu när en omgång faktiskt startar
+      showToast("Ny omgång påbörjad 💗");
+      await renderMedicin();
+    }
+
+    // Bocka dagens dos i den pågående omgången.
+    async function logToday() {
+      const active = await getActiveCourse();
+      if (!active) return;
+      const today = todayISO();
+      const days = await getDaysFor(active.omgangId);
+      if (days.some((d) => d.date === today)) {
+        showToast("Redan bockad idag");
+        await renderMedicin();
+        return;
+      }
+      const dose = getSelectedDose(document.getElementById("dose-today"));
+      await addRecord("medication", { date: today, omgangId: active.omgangId, dos: dose });
+      showToast("Bockad för idag ✓");
+      await renderMedicin();
+    }
+
+    // Logga en glömd dag bakåt i tiden (inom omgångens intervall).
+    async function backdateDay() {
+      const active = await getActiveCourse();
+      if (!active) return;
+      const input = document.getElementById("backdate-input");
+      const date = input && input.value;
+      if (!date) { showToast("Välj ett datum först"); return; }
+      if (date > todayISO()) { showToast("Kan inte logga framtida datum"); return; }
+      if (date < active.startdatum) { showToast("Datumet ligger före omgångens start"); return; }
+      const days = await getDaysFor(active.omgangId);
+      if (days.some((d) => d.date === date)) { showToast("Dagen är redan loggad"); return; }
+      const dose = getSelectedDose(document.getElementById("dose-backdate"));
+      await addRecord("medication", { date, omgangId: active.omgangId, dos: dose });
+      showToast(fmtShort(date) + " tillagd");
+      await renderMedicin();
+    }
+
+    // Avsluta omgången: sätt slutdatum + active=false.
+    async function endCourse() {
+      const active = await getActiveCourse();
+      if (!active) return;
+      if (!confirm("Vill du avsluta den pågående omgången?")) return;
+      active.slutdatum = todayISO();
+      active.active = false;
+      await addRecord("courses", active); // put = upsert på omgangId
+      showToast("Omgången avslutad");
+      await renderMedicin();
+    }
+
+    // Ta bort en felregistrerad dag.
+    async function deleteDay(id) {
+      if (!confirm("Ta bort den här dagen?")) return;
+      await deleteRecord("medication", Number(id));
+      showToast("Dag borttagen");
+      await renderMedicin();
+    }
+
+    // Delegerad klick-hantering (sätts EN gång; innehållet byts ju ut vid render).
+    medicinContent.addEventListener("click", async (e) => {
+      // Dos-val: markera klickad knapp inom sin grupp.
+      const doseBtn = e.target.closest(".dose-opt");
+      if (doseBtn) {
+        const group = doseBtn.closest(".dose-group");
+        group.querySelectorAll(".dose-opt")
+          .forEach((b) => b.classList.toggle("selected", b === doseBtn));
+        return;
+      }
+      const actEl = e.target.closest("[data-act]");
+      if (!actEl) return;
+      switch (actEl.dataset.act) {
+        case "start":    await startCourse(); break;
+        case "today":    await logToday(); break;
+        case "backdate": await backdateDay(); break;
+        case "end":      await endCourse(); break;
+        case "del-day":  await deleteDay(actEl.dataset.id); break;
+        case "toggle":
+          expandedCourse =
+            expandedCourse === actEl.dataset.course ? null : actEl.dataset.course;
+          await renderMedicin();
+          break;
+      }
+    });
+
+    /* --- Påminnelser ---
+       VIKTIGT om iOS: webb-notiser fungerar bara för en PWA som lagts till på
+       hemskärmen, och stödet är begränsat. Framför allt går det INTE att lita på
+       schemalagda bakgrundsnotiser kl 08:00 utan en push-server (som den här
+       appen medvetet saknar – allt är lokalt). Därför:
+         1) Best-effort: en lokal notis när appen öppnas (om lov getts).
+         2) Huvudlösning: in-app-bannern i vyn ovan, som alltid syns när hon
+            öppnar appen under en pågående omgång och inte bockat idag. */
+    function requestNotifPermission() {
+      try {
+        if ("Notification" in window && Notification.permission === "default") {
+          Notification.requestPermission();
+        }
+      } catch (_) { /* äldre iOS saknar Notification helt – strunta tyst */ }
+    }
+
+    async function maybeNotifyMorning() {
+      try {
+        if (!("Notification" in window) || Notification.permission !== "granted") return;
+        if (new Date().getHours() < 8) return;          // för tidigt på dygnet
+        const active = await getActiveCourse();
+        if (!active) return;                            // ingen omgång → ingen notis
+        const days = await getDaysFor(active.omgangId);
+        if (days.some((d) => d.date === todayISO())) return; // redan tagen idag
+        if (localStorage.getItem("med-notif-shown") === todayISO()) return; // max 1/dag
+        localStorage.setItem("med-notif-shown", todayISO());
+        new Notification("Dags att ta escitalopram 💊", {
+          body: "Glöm inte din dos idag.",
+          icon: "icons/icon-192.png",
+        });
+      } catch (_) { /* tyst – notiser är sekundära */ }
+    }
+
+    /* ======================================================================
        d) SERVICE WORKER – registrering (offline-stöd)
           OBS: aktiveras bara i säker kontext (https eller localhost).
        =================================================================== */
@@ -630,8 +1469,11 @@
       });
     }
 
-    // Öppna databasen direkt så stores skapas vid första start.
-    openDB().catch((err) => console.error("Kunde inte öppna databasen:", err));
+    // Öppna databasen direkt så stores skapas vid första start, och försök
+    // sedan med en best-effort morgon-notis (sekundärt – se påminnelse-blocket).
+    openDB()
+      .then(() => maybeNotifyMorning())
+      .catch((err) => console.error("Kunde inte öppna databasen:", err));
   </script>
 </body>
 </html>
