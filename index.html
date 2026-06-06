@@ -634,6 +634,74 @@
     }
     .bleed-day-btns { display: flex; gap: 6px; flex: none; }
     .bleed-day-btns .day-del { background: var(--accent-soft); }
+
+    /* ========================================================================
+       IDAG-VYN (lugn daglig översikt)
+       ===================================================================== */
+
+    /* Varm hälsning + datum högst upp. */
+    .greeting {
+      margin-top: 4px;
+      font-size: 1.35rem;
+      font-weight: 650;
+      letter-spacing: -0.01em;
+    }
+    .greeting-date {
+      margin-top: 2px;
+      font-size: 0.95rem;
+      color: var(--muted);
+      text-transform: capitalize;
+    }
+
+    /* Sammanfattnings-chips i måendekortet (emoji + etikett). */
+    .summary-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 7px 12px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text);
+      background: var(--accent-soft);
+      border-radius: 999px;
+    }
+
+    /* Klickbar rad-kort (blödningsöversikten → öppnar Blödningar-vyn). */
+    .card-link {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      width: 100%;
+      margin-top: 14px;
+      padding: 16px 18px;
+      font-size: 0.98rem;
+      font-weight: 550;
+      text-align: left;
+      color: var(--text);
+      background: var(--card);
+      border: none;
+      border-radius: var(--radius);
+      box-shadow: 0 1px 3px rgba(70, 58, 61, 0.06);
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .card-link:active { opacity: 0.85; }
+    .card-link-arrow { flex: none; font-size: 1.3rem; color: var(--accent); }
+
+    /* "Omgång pågår – dag X" – framträdande men inte gigantisk. */
+    .idag-med-head {
+      margin: 6px 0 2px;
+      font-size: 1.2rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
   </style>
 </head>
 
@@ -810,7 +878,8 @@
       viewTitle.textContent = title;
       // Skrolla upp så ny vy börjar i toppen
       window.scrollTo(0, 0);
-      // Medicin- och Blödningsvyn byggs om från databasen varje gång de visas.
+      // Idag-, Medicin- och Blödningsvyn byggs om från databasen varje visning.
+      if (name === "idag") renderIdag();
       if (name === "medicin") renderMedicin();
       if (name === "blodningar") renderBleeding();
     }
@@ -1888,6 +1957,153 @@
 
     // Bygg vyn en gång vid start så den är redo (renderas även vid varje byte).
     renderBleeding();
+
+    /* ======================================================================
+       h) IDAG-VYN – lugn daglig översikt
+
+       Drar ihop dagens läge från de andra vyerna (mående, medicin, blödning)
+       till en snabb bild. Bygger om sig från databasen varje gång den visas.
+       Återanvänder hjälpare från sektionerna ovan: getRecord, getAll, todayISO,
+       daysBetween, fmtLong, EMOJI, MOOD_METRICS, bleedTypeLabel/bleedFlowLabel,
+       showView, loadMoodForDate, logToday, showToast.
+       =================================================================== */
+    const idagContent = document.getElementById("idag-content");
+
+    // Nyckeltal som lyfts fram i måendesammanfattningen (i denna ordning).
+    const IDAG_MOOD_KEYS = ["humor", "energi", "angest"];
+
+    // Tidsanpassad hälsning – hålls enkel och varm.
+    function greetingFor(d) {
+      const h = d.getHours();
+      if (h < 10) return "God morgon";
+      if (h < 17) return "God dag";
+      return "God kväll";
+    }
+
+    // Visa timmar med svenskt decimalkomma (7.5 → "7,5").
+    function fmtHours(n) {
+      return String(n).replace(".", ",");
+    }
+
+    // En chip: emoji + etikett för en ifylld måendeskattning.
+    function moodChip(metric, value) {
+      const emoji = EMOJI[metric.scale][value - 1];
+      return '<span class="chip">' + emoji + " " + metric.label + "</span>";
+    }
+
+    // Bygg "Dagens mående"-kortet.
+    function buildIdagMood(moodRec) {
+      const scores = (moodRec && moodRec.scores) || {};
+      const loggat = Object.keys(scores).length > 0 ||
+        (moodRec && (moodRec.sleepHours != null || moodRec.note));
+
+      let html = '<div class="card">';
+      html += '<div class="status-eyebrow">Dagens mående</div>';
+
+      if (loggat) {
+        // Chips för de viktigaste nyckeltalen som faktiskt fyllts i.
+        const chips = IDAG_MOOD_KEYS
+          .filter((id) => scores[id] != null)
+          .map((id) => moodChip(MOOD_METRICS.find((m) => m.id === id), scores[id]));
+        if (moodRec.sleepHours != null) {
+          chips.push('<span class="chip">💤 ' + fmtHours(moodRec.sleepHours) + " tim</span>");
+        }
+        html += chips.length
+          ? '<div class="summary-chips">' + chips.join("") + "</div>"
+          : '<p class="status-sub" style="margin:8px 0 0">Loggat för idag ✓</p>';
+        html += '<button type="button" class="btn secondary" data-act="mood">Ändra</button>';
+      } else {
+        html += '<p class="status-sub" style="margin:8px 0 12px">' +
+          "Hur känns dagen? En liten check-in hjälper dig se mönster över tid.</p>";
+        html += '<button type="button" class="btn" data-act="mood">Logga dagens mående</button>';
+      }
+      return html + "</div>";
+    }
+
+    // Bygg "Medicin"-kortet (pågående omgång vs ingen).
+    function buildIdagMed(courses, meds, today) {
+      const active = courses.find((c) => c.active) || null;
+      let html = '<div class="card">';
+      html += '<div class="status-eyebrow">Medicin</div>';
+
+      if (active) {
+        const days = meds.filter((m) => m.omgangId === active.omgangId);
+        const tagen = days.some((d) => d.date === today);
+        html += '<div class="idag-med-head">Omgång pågår – dag ' + days.length + "</div>";
+        if (tagen) {
+          html += '<div class="taken-today">✓ Tagen idag</div>';
+        } else {
+          html += '<p class="status-sub" style="margin:6px 0 0">Dagens dos är inte bockad ännu.</p>';
+          html += '<button type="button" class="btn big" data-act="med-today">Jag tog den idag</button>';
+        }
+      } else {
+        html += '<p class="status-sub" style="margin:6px 0 0">Ingen omgång pågår just nu.</p>';
+        // Dagar sedan den senast avslutade omgången, om någon finns.
+        const ended = courses.filter((c) => !c.active && c.slutdatum);
+        if (ended.length) {
+          const lastSlut = ended.reduce(
+            (mx, c) => (c.slutdatum > mx ? c.slutdatum : mx), ended[0].slutdatum
+          );
+          html += '<p class="status-sub" style="margin:4px 0 0">' +
+            dagar(daysBetween(lastSlut, today)) + " sedan senaste omgången.</p>";
+        }
+      }
+      return html + "</div>";
+    }
+
+    // Bygg blödningsraden (klickbar → öppnar Blödningar-vyn).
+    function buildIdagBleed(bleed, today) {
+      const rec = bleed.find((b) => b.date === today);
+      const text = rec
+        ? "Blödning loggad idag · " + bleedTypeLabel(rec.type) +
+          ", " + bleedFlowLabel(rec.flow).toLowerCase()
+        : "Ingen blödning loggad idag";
+      return '<button type="button" class="card-link" data-act="blod">' +
+        '<span>🩸 ' + text + "</span><span class=\"card-link-arrow\">›</span></button>";
+    }
+
+    // Bygg om hela Idag-vyn från databasen.
+    async function renderIdag() {
+      const today = todayISO();
+      const [moodRec, courses, meds, bleed] = await Promise.all([
+        getRecord("mood", today), getAll("courses"),
+        getAll("medication"), getAll("bleeding"),
+      ]);
+
+      const dateStr = new Intl.DateTimeFormat("sv-SE", {
+        weekday: "long", day: "numeric", month: "long",
+      }).format(new Date(today + "T00:00:00"));
+
+      let html = '<div class="greeting">' + greetingFor(new Date()) + " 💗</div>";
+      html += '<div class="greeting-date">' + dateStr + "</div>";
+      html += buildIdagMood(moodRec);
+      html += buildIdagMed(courses, meds, today);
+      html += buildIdagBleed(bleed, today);
+
+      idagContent.innerHTML = html;
+    }
+
+    // Delegerad klick-hantering (sätts en gång; innehållet byts ut vid render).
+    idagContent.addEventListener("click", async (e) => {
+      const actEl = e.target.closest("[data-act]");
+      if (!actEl) return;
+      switch (actEl.dataset.act) {
+        case "mood":
+          loadMoodForDate(todayISO());        // se till att Mående visar idag
+          showView("maende", "Mående");
+          break;
+        case "med-today":
+          await logToday();                   // använder DEFAULT_DOSE (snabbknapp)
+          await renderIdag();
+          break;
+        case "blod":
+          showView("blodningar", "Blödningar");
+          break;
+      }
+    });
+
+    // Bygg vyn vid start (Idag är default-aktiv vyn).
+    renderIdag();
 
     /* ======================================================================
        d) SERVICE WORKER – registrering (offline-stöd)
