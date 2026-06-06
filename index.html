@@ -562,6 +562,78 @@
       text-align: center;
       padding: 6px 0;
     }
+
+    /* ========================================================================
+       BLÖDNINGAR-VYN (mellanblödningar + framsläppt mens)
+       Återanvänder mycket från Medicin/Mående: .dose-group/.dose-opt för typ &
+       flöde, .faces/.face för mående, .course-item/.stat-row för historik/stats.
+       ===================================================================== */
+
+    /* Fällbart formulär – dolt tills man trycker "Logga blödning". */
+    .bleed-form { display: none; }
+    .bleed-form.open { display: block; }
+
+    /* Liten etikett ovanför varje fält i formuläret. */
+    .field-label {
+      margin: 16px 0 0;
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .field-label:first-child { margin-top: 0; }
+
+    /* Datumväljaren – samma stil som backdate-fältet i Medicin. */
+    .bleed-form input[type="date"] {
+      width: 100%;
+      margin-top: 8px;
+      padding: 11px 12px;
+      font: inherit;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+    }
+
+    /* Spara/Avbryt sida vid sida. */
+    .bleed-actions { display: flex; gap: 8px; margin-top: 18px; }
+    .bleed-actions .btn { margin-top: 0; }
+
+    /* Liten typ-tagg i historiken (varm för mens, dämpad för mellanblödning). */
+    .bleed-tag {
+      display: inline-block;
+      margin-left: 8px;
+      padding: 1px 8px;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      border-radius: 999px;
+    }
+    .bleed-tag.mellan  { color: var(--muted);  background: var(--accent-soft); }
+    .bleed-tag.mens    { color: #fff;          background: var(--accent); }
+    .bleed-tag.blandat { color: var(--accent); background: var(--accent-soft); }
+
+    /* Detaljrad i en utfälld händelse: datum + flöde/mående + redigera/ta bort. */
+    .bleed-day { padding: 9px 0; }
+    .bleed-day + .bleed-day { border-top: 1px solid var(--line); }
+    .bleed-day-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .bleed-day-date { font-weight: 600; font-size: 0.94rem; }
+    .bleed-day-meta { margin-top: 2px; font-size: 0.86rem; color: var(--muted); }
+    .bleed-day-note {
+      margin-top: 4px;
+      font-size: 0.9rem;
+      color: var(--text);
+      white-space: pre-wrap;
+    }
+    .bleed-day-btns { display: flex; gap: 6px; flex: none; }
+    .bleed-day-btns .day-del { background: var(--accent-soft); }
   </style>
 </head>
 
@@ -577,9 +649,9 @@
        VYER  (bara rubrik + platshållare i detta steg)
        ==================================================================== -->
   <main>
-    <!-- 1. Översikt -->
+    <!-- 1. Översikt – allt innehåll renderas av JS (sektion h). -->
     <section id="view-idag" class="view active">
-      <p class="placeholder">Här kommer en överblick över dagen att visas.</p>
+      <div id="idag-content"></div>
     </section>
 
     <!-- 2. Daglig måendecheck -->
@@ -639,9 +711,41 @@
       <div id="medicin-content"></div>
     </section>
 
-    <!-- 4. Blödningar -->
+    <!-- 4. Blödningar – logga mellanblödningar & framsläppt mens, samt historik.
+         Formuläret ligger statiskt här; statistik + historik renderas av JS
+         (sektion g) in i #bleeding-content. -->
     <section id="view-blodningar" class="view">
-      <p class="placeholder">Här loggar du mellanblödningar och mens.</p>
+      <!-- Öppnar formuläret för dagens (eller en bakåtdaterad) blödning. -->
+      <button class="btn" id="btn-bleed-today">🩸 Logga blödning idag</button>
+
+      <!-- Fällbart formulär (dolt tills man trycker på knappen ovan). -->
+      <div class="card bleed-form" id="bleed-form">
+        <p class="field-label">Datum</p>
+        <!-- max sätts till idag av JS; ingen loggning i framtiden. -->
+        <input type="date" id="bleed-date" />
+
+        <p class="field-label">Typ</p>
+        <div class="dose-group" id="bleed-type"></div>
+
+        <p class="field-label">Flöde</p>
+        <div class="dose-group" id="bleed-flow"></div>
+
+        <p class="field-label">Mående under blödningen (valfritt)</p>
+        <div class="faces" id="bleed-mood"></div>
+        <div class="scale-ends"><span>dåligt</span><span>bra</span></div>
+
+        <p class="field-label">Anteckning (valfritt)</p>
+        <textarea class="note" id="bleed-note"
+                  placeholder="Valfritt – t.ex. kramper, hur det känns …"></textarea>
+
+        <div class="bleed-actions">
+          <button class="btn secondary" id="btn-bleed-cancel">Avbryt</button>
+          <button class="btn" id="btn-bleed-save">Spara</button>
+        </div>
+      </div>
+
+      <!-- Statistik + historik (tidslinje över händelser) renderas hit. -->
+      <div id="bleeding-content"></div>
     </section>
 
     <!-- 5. Inställningar – export/import av all data -->
@@ -706,8 +810,9 @@
       viewTitle.textContent = title;
       // Skrolla upp så ny vy börjar i toppen
       window.scrollTo(0, 0);
-      // Medicin-vyn byggs om från databasen varje gång den visas (färsk data).
+      // Medicin- och Blödningsvyn byggs om från databasen varje gång de visas.
       if (name === "medicin") renderMedicin();
+      if (name === "blodningar") renderBleeding();
     }
 
     tabbar.addEventListener("click", (e) => {
@@ -1455,6 +1560,334 @@
         });
       } catch (_) { /* tyst – notiser är sekundära */ }
     }
+
+    /* ======================================================================
+       g) BLÖDNINGSVY – mellanblödningar & framsläppt mens
+
+       Antonia tar p-piller kontinuerligt och har sällan mens. Hon behöver inte
+       cykel-prediktion, utan ett lugnt sätt att registrera faktiska
+       blödningshändelser och hur hon mår kring dem.
+
+       FLERDAGARS-VAL: hon loggar EN DAG I TAGET (flöde och mående varierar ju
+       mellan dagar). Historiken grupperar sedan sammanhängande datum till
+       "händelser" automatiskt – precis som Medicin-vyn härleder en omgångs
+       längd ur de loggade dagarna. Det slipper ett separat start/slut-bokförande
+       som kan bli inkonsekvent, och "logga idag" / "logga bakåt" blir samma sak.
+
+       Datamodell (store "bleeding", logiskt 1 rad/datum – vi gör upsert-på-datum
+       själva): { id, date, type, flow, mood?, note?, updatedAt }.
+       (todayISO, daysBetween, fmtShort, fmtLong, dagar, EMOJI, showToast och
+        getAll/addRecord/deleteRecord återanvänds från sektionerna ovan.)
+       =================================================================== */
+    const bleedingContent = document.getElementById("bleeding-content");
+    const bleedFormEl = document.getElementById("bleed-form");
+
+    // Valbara typer & flöden. id = sparas i DB, label = visas i UI.
+    const BLEED_TYPES = [
+      { id: "mellanblodning", label: "Mellanblödning", tag: "mellan" },
+      { id: "framslappt",     label: "Framsläppt mens", tag: "mens" },
+    ];
+    const BLEED_FLOWS = [
+      { id: "spotting", label: "Spotting" },
+      { id: "latt",     label: "Lätt" },
+      { id: "medel",    label: "Medel" },
+      { id: "rikligt",  label: "Rikligt" },
+    ];
+
+    // Slå upp etikett för ett sparat id (tål okända/äldre värden).
+    function bleedTypeLabel(id) {
+      const t = BLEED_TYPES.find((x) => x.id === id);
+      return t ? t.label : (id || "–");
+    }
+    function bleedFlowLabel(id) {
+      const f = BLEED_FLOWS.find((x) => x.id === id);
+      return f ? f.label : (id || "–");
+    }
+
+    // --- Formulär-state (transient, hålls i JS så att re-render av historiken
+    //     inte nollar de val man håller på att göra) ---
+    let bleedEditId = null;   // null = ny post, annars id:t vi redigerar
+    let expandedEvent = null; // start-datum för utfälld händelse (null = ingen)
+    let bleedSel = { date: todayISO(), type: null, flow: null, mood: null };
+
+    // Bygg en knapprad (.dose-group-stil) av alternativ; markera valt.
+    function bleedOptionsHTML(items, selectedId) {
+      return items.map((it) =>
+        '<button type="button" class="dose-opt' +
+        (it.id === selectedId ? " selected" : "") +
+        '" data-opt="' + it.id + '">' + it.label + "</button>"
+      ).join("");
+    }
+
+    // Bygg de fem måendeansiktena (valfritt; samma valence-skala som Måendevyn).
+    function bleedFacesHTML(selected) {
+      return EMOJI.valence.map((emoji, i) =>
+        '<button type="button" class="face' +
+        (i + 1 === selected ? " selected" : "") +
+        '" data-mood="' + (i + 1) + '" aria-label="' + (i + 1) + ' av 5">' +
+        emoji + "</button>"
+      ).join("");
+    }
+
+    // Spegla hela formulär-state till DOM.
+    function renderBleedForm() {
+      document.getElementById("bleed-date").value = bleedSel.date;
+      document.getElementById("bleed-date").max = todayISO();
+      document.getElementById("bleed-type").innerHTML =
+        bleedOptionsHTML(BLEED_TYPES, bleedSel.type);
+      document.getElementById("bleed-flow").innerHTML =
+        bleedOptionsHTML(BLEED_FLOWS, bleedSel.flow);
+      document.getElementById("bleed-mood").innerHTML =
+        bleedFacesHTML(bleedSel.mood);
+      document.getElementById("bleed-note").value = bleedSel.note || "";
+    }
+
+    // Öppna formuläret. Med rec = redigera befintlig post, annars ny (tomt).
+    function openBleedForm(rec) {
+      if (rec) {
+        bleedEditId = rec.id;
+        bleedSel = {
+          date: rec.date, type: rec.type || null, flow: rec.flow || null,
+          mood: rec.mood || null, note: rec.note || "",
+        };
+      } else {
+        bleedEditId = null;
+        bleedSel = { date: todayISO(), type: null, flow: null, mood: null, note: "" };
+      }
+      renderBleedForm();
+      bleedFormEl.classList.add("open");
+      bleedFormEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    function closeBleedForm() {
+      bleedFormEl.classList.remove("open");
+      bleedEditId = null;
+    }
+
+    // Spara dagens blödning. Typ + flöde krävs; mående + anteckning är valfria.
+    async function saveBleed() {
+      bleedSel.date = document.getElementById("bleed-date").value || todayISO();
+      bleedSel.note = document.getElementById("bleed-note").value.trim();
+
+      if (bleedSel.date > todayISO()) { showToast("Kan inte logga framtida datum"); return; }
+      if (!bleedSel.type || !bleedSel.flow) { showToast("Välj typ och flöde"); return; }
+
+      // 1 rad/datum: leta ev. befintlig post för datumet (om vi inte redan
+      // redigerar den) och uppdatera den istället för att skapa en dubblett.
+      const all = await getAll("bleeding");
+      let id = bleedEditId;
+      if (id == null) {
+        const existing = all.find((b) => b.date === bleedSel.date);
+        if (existing) id = existing.id;
+      }
+
+      const record = {
+        date: bleedSel.date,
+        type: bleedSel.type,
+        flow: bleedSel.flow,
+        updatedAt: new Date().toISOString(),
+      };
+      if (id != null) record.id = id;          // behåll id → put blir uppdatering
+      if (bleedSel.mood) record.mood = bleedSel.mood;
+      if (bleedSel.note) record.note = bleedSel.note;
+
+      await addRecord("bleeding", record);
+      closeBleedForm();
+      showToast(id != null ? "Uppdaterad ✓" : "Sparat ✓");
+      await renderBleeding();
+    }
+
+    // Ta bort en enskild dag.
+    async function deleteBleed(id) {
+      if (!confirm("Ta bort den här blödningsdagen?")) return;
+      await deleteRecord("bleeding", Number(id));
+      showToast("Borttagen");
+      await renderBleeding();
+    }
+
+    /* --- Gruppera dagar till händelser (löpande datum utan lucka) --- */
+    function groupEvents(entries) {
+      const sorted = entries.slice().sort((a, b) => a.date.localeCompare(b.date));
+      const events = [];
+      let cur = null;
+      for (const e of sorted) {
+        // Ny händelse om det är första posten eller om luckan är > 1 dygn.
+        if (!cur || daysBetween(cur.end, e.date) > 1) {
+          cur = { start: e.date, end: e.date, days: [e] };
+          events.push(cur);
+        } else {
+          cur.end = e.date;
+          cur.days.push(e);
+        }
+      }
+      // Härled längd + gemensam typ ("blandat" om dagarna skiljer sig).
+      events.forEach((ev) => {
+        ev.len = ev.days.length;
+        const types = new Set(ev.days.map((d) => d.type));
+        ev.type = types.size === 1 ? [...types][0] : "blandat";
+      });
+      return events;
+    }
+
+    /* --- Statistik (lugn, ingen tvärsäker prognos) --- */
+    function buildBleedStats(entries, events) {
+      if (entries.length === 0) return "";
+
+      // Senast loggade blödningsdag → "X dagar sedan" / "idag".
+      const lastDate = entries.reduce(
+        (mx, e) => (e.date > mx ? e.date : mx), entries[0].date
+      );
+      const since = daysBetween(lastDate, todayISO());
+      const sinceText = since <= 0 ? "Idag" : dagar(since) + " sedan";
+
+      // Snitt-mellanrum mellan händelser (start − föregående slut). Kräver ≥2.
+      const sortedEv = events.slice().sort((a, b) => a.start.localeCompare(b.start));
+      const gaps = [];
+      for (let i = 1; i < sortedEv.length; i++) {
+        gaps.push(daysBetween(sortedEv[i - 1].end, sortedEv[i].start));
+      }
+      const avgGap = gaps.length
+        ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length) : null;
+
+      // Snittlängd på en händelse.
+      const avgLen = events.length
+        ? Math.round(events.reduce((a, b) => a + b.len, 0) / events.length) : null;
+
+      let html = '<div class="card">';
+      html += '<div class="status-eyebrow" style="color:var(--muted)">Översikt</div>';
+      html += '<div class="stat-row"><span>Senaste blödning</span>' +
+              '<span class="stat-val">' + sinceText + "</span></div>";
+      if (avgLen != null && events.length >= 1)
+        html += '<div class="stat-row"><span>Snittlängd på en blödning</span>' +
+                '<span class="stat-val">' + dagar(avgLen) + "</span></div>";
+      if (avgGap != null)
+        html += '<div class="stat-row"><span>Brukar gå mellan blödningar</span>' +
+                '<span class="stat-val">' + dagar(avgGap) + "</span></div>";
+
+      // Varm, försiktig ledtext (ingen prognos) när det finns ett mönster.
+      if (avgGap != null) {
+        html += '<p class="hint" style="margin-top:12px">Det här är bara ett ' +
+                'ungefärligt snitt – kroppen följer inte schema. 💗</p>';
+      }
+      html += "</div>";
+      return html;
+    }
+
+    /* --- Historik (tidslinje, nyast först) --- */
+    function buildBleedHistory(events) {
+      let html = '<h2 class="group-title">Historik</h2><div class="card">';
+      if (events.length === 0) {
+        return html + '<p class="empty-hint">Inga blödningar loggade ännu.</p></div>';
+      }
+
+      const sorted = events.slice().sort((a, b) => b.start.localeCompare(a.start));
+      const maxLen = Math.max(1, ...events.map((e) => e.len));
+
+      sorted.forEach((ev) => {
+        const dateLabel = ev.len === 1
+          ? fmtShort(ev.start)
+          : fmtShort(ev.start) + " – " + fmtShort(ev.end);
+        const tagClass = ev.type === "blandat" ? "blandat"
+          : (BLEED_TYPES.find((t) => t.id === ev.type) || {}).tag || "mellan";
+        const tagText = ev.type === "blandat" ? "Blandat" : bleedTypeLabel(ev.type);
+
+        html += '<div class="course-item" data-act="toggle" data-event="' + ev.start + '">';
+        html += '<div class="course-head"><span class="course-dates">' + dateLabel +
+                '<span class="bleed-tag ' + tagClass + '">' + tagText + '</span>' +
+                '</span><span class="course-days">' + dagar(ev.len) + "</span></div>";
+        html += '<div class="course-bar"><span style="width:' +
+                Math.round((ev.len / maxLen) * 100) + '%"></span></div>';
+
+        // Utfälld: en rad per dag med flöde/mående + redigera/ta bort.
+        if (expandedEvent === ev.start) {
+          const days = ev.days.slice().sort((a, b) => a.date.localeCompare(b.date));
+          html += '<div class="course-days-list">';
+          days.forEach((d) => {
+            const moodEmoji = d.mood ? " · " + EMOJI.valence[d.mood - 1] : "";
+            html += '<div class="bleed-day"><div class="bleed-day-head">' +
+                    '<div><div class="bleed-day-date">' + fmtLong(d.date) + "</div>" +
+                    '<div class="bleed-day-meta">' + bleedTypeLabel(d.type) + " · " +
+                    bleedFlowLabel(d.flow) + moodEmoji + "</div></div>" +
+                    '<div class="bleed-day-btns">' +
+                    '<button type="button" class="day-del" data-act="edit" data-id="' +
+                    d.id + '">Redigera</button>' +
+                    '<button type="button" class="day-del" data-act="del" data-id="' +
+                    d.id + '">Ta bort</button></div></div>';
+            if (d.note)
+              html += '<div class="bleed-day-note">' +
+                      d.note.replace(/[<>&]/g, (c) =>
+                        ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c])) + "</div>";
+            html += "</div>";
+          });
+          html += "</div>";
+        }
+        html += "</div>";
+      });
+
+      return html + "</div>";
+    }
+
+    // Bygg om hela vyn (utom det statiska formuläret) från databasen.
+    async function renderBleeding() {
+      const entries = await getAll("bleeding");
+      const events = groupEvents(entries);
+      bleedingContent.innerHTML =
+        buildBleedStats(entries, events) + buildBleedHistory(events);
+    }
+
+    /* --- Klickhantering i FORMULÄRET (typ/flöde/mående togglas) --- */
+    bleedFormEl.addEventListener("click", (e) => {
+      const opt = e.target.closest(".dose-opt");
+      if (opt) {
+        // Vilken grupp? (typ eller flöde) → uppdatera state + markering.
+        const group = opt.closest(".dose-group");
+        if (group.id === "bleed-type") bleedSel.type = opt.dataset.opt;
+        if (group.id === "bleed-flow") bleedSel.flow = opt.dataset.opt;
+        group.querySelectorAll(".dose-opt")
+          .forEach((b) => b.classList.toggle("selected", b === opt));
+        return;
+      }
+      const face = e.target.closest(".face");
+      if (face) {
+        const val = Number(face.dataset.mood);
+        // Klick på redan valt ansikte = avmarkera (mående är valfritt).
+        bleedSel.mood = bleedSel.mood === val ? null : val;
+        document.querySelectorAll("#bleed-mood .face").forEach((f) =>
+          f.classList.toggle("selected", Number(f.dataset.mood) === bleedSel.mood));
+      }
+    });
+
+    document.getElementById("btn-bleed-today")
+      .addEventListener("click", () => openBleedForm());
+    document.getElementById("btn-bleed-cancel")
+      .addEventListener("click", closeBleedForm);
+    document.getElementById("btn-bleed-save")
+      .addEventListener("click", saveBleed);
+
+    /* --- Delegerad klickhantering i HISTORIKEN (sätts en gång) --- */
+    bleedingContent.addEventListener("click", async (e) => {
+      const actEl = e.target.closest("[data-act]");
+      if (!actEl) return;
+      switch (actEl.dataset.act) {
+        case "toggle":
+          expandedEvent =
+            expandedEvent === actEl.dataset.event ? null : actEl.dataset.event;
+          await renderBleeding();
+          break;
+        case "edit": {
+          const all = await getAll("bleeding");
+          const rec = all.find((b) => b.id === Number(actEl.dataset.id));
+          if (rec) openBleedForm(rec);
+          break;
+        }
+        case "del":
+          await deleteBleed(actEl.dataset.id);
+          break;
+      }
+    });
+
+    // Bygg vyn en gång vid start så den är redo (renderas även vid varje byte).
+    renderBleeding();
 
     /* ======================================================================
        d) SERVICE WORKER – registrering (offline-stöd)
