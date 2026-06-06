@@ -1,0 +1,17 @@
+{
+  "name": "Antonias dagbok <3",
+  "short_name": "Antonias dagbok",
+  "description": "Privat hälsodagbok – all data lagras lokalt på telefonen.",
+  "lang": "sv-SE",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FAF4F2",
+  "theme_color": "#FAF4F2",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

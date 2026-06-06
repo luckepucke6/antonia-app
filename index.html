@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8" />
+
+  <!-- viewport-fit=cover krävs för att env(safe-area-inset-*) ska fungera på iPhone -->
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+
+  <title>Antonias dagbok &lt;3</title>
+
+  <!-- PWA-manifest -->
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#FAF4F2" />
+
+  <!-- iOS: gör att appen körs i helskärm (standalone) från hemskärmen -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Antonias dagbok" />
+  <link rel="apple-touch-icon" href="icons/icon-180.png" />
+
+  <style>
+    /* ========================================================================
+       PALETT & GRUNDER  ("Dimrosa & grädde")
+       ===================================================================== */
+    :root {
+      --bg: #FAF4F2;        /* sidbakgrund (cream rose) */
+      --card: #FFFFFF;      /* kort/paneler */
+      --accent: #C68A95;    /* dusty rose – aktiv flik, knappar */
+      --accent-soft: #F3E6E8; /* mjuk accent-bakgrund */
+      --text: #463A3D;      /* huvudtext (plum brown) */
+      --muted: #A8979B;     /* dämpad text (mauve gray) */
+      --line: #EFE6E3;      /* tunna avgränsare */
+
+      --tabbar-height: 58px;
+      --radius: 16px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                   Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.5;
+
+      /* Lämna plats för den fasta flik-raden + iPhones hemknapps-streck */
+      padding-bottom: calc(var(--tabbar-height) + env(safe-area-inset-bottom));
+    }
+
+    /* ========================================================================
+       TOPPRUBRIK (per vy)
+       ===================================================================== */
+    .app-header {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: var(--bg);
+      /* Skjut ner innehållet under iPhones notch/statusrad */
+      padding: calc(env(safe-area-inset-top) + 14px) 20px 12px;
+      border-bottom: 1px solid var(--line);
+    }
+    .app-header h1 {
+      margin: 0;
+      font-size: 1.5rem;
+      font-weight: 650;
+      letter-spacing: -0.01em;
+    }
+
+    /* ========================================================================
+       VYER
+       ===================================================================== */
+    main { padding: 16px 20px 24px; }
+
+    .view { display: none; }
+    .view.active { display: block; animation: fade 0.2s ease; }
+
+    @keyframes fade {
+      from { opacity: 0; transform: translateY(4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .placeholder {
+      color: var(--muted);
+      font-size: 0.98rem;
+    }
+
+    /* Enkelt kort som du kan återanvända när vyerna byggs ut */
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 18px;
+      margin-top: 14px;
+      box-shadow: 0 1px 3px rgba(70, 58, 61, 0.06);
+    }
+
+    /* ========================================================================
+       KNAPPAR (används i Inställningar)
+       ===================================================================== */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      padding: 14px 16px;
+      margin-top: 12px;
+      font-size: 1rem;
+      font-weight: 600;
+      color: #fff;
+      background: var(--accent);
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn:active { opacity: 0.85; }
+    .btn.secondary {
+      color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .hint {
+      margin-top: 10px;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    /* ========================================================================
+       FLIK-RAD (fast bottom tab bar i iOS-stil)
+       ===================================================================== */
+    .tabbar {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 10;
+      display: flex;
+      background: var(--card);
+      border-top: 1px solid var(--line);
+      /* Lyft knapparna ovanför hemknapps-strecket */
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .tab {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      height: var(--tabbar-height);
+      padding: 0;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 0.66rem;
+      font-weight: 600;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .tab .icon { font-size: 1.2rem; line-height: 1; }
+    .tab.active { color: var(--accent); }
+
+    /* ========================================================================
+       MÅENDE-VYN
+       ===================================================================== */
+
+    /* Datum-navigering högst upp i vyn */
+    .date-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+    .date-nav .nav-btn {
+      width: 40px;
+      height: 40px;
+      flex: none;
+      font-size: 1.4rem;
+      line-height: 1;
+      color: var(--accent);
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .date-nav .nav-btn:disabled { opacity: 0.3; cursor: default; }
+    .date-nav .date-label {
+      flex: 1;
+      text-align: center;
+      font-weight: 650;
+      text-transform: capitalize;
+    }
+    .date-nav .date-badge {
+      display: block;
+      margin-top: 1px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--accent);
+      text-transform: none;
+    }
+
+    /* Gruppsrubrik (KÄNSLOR / KROPP / SÖMN / ÖVRIGT) */
+    .group-title {
+      margin: 22px 0 0;
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    /* En skattningsrad */
+    .metric { padding: 6px 0; }
+    .metric + .metric { border-top: 1px solid var(--line); }
+    .metric-label {
+      font-size: 0.98rem;
+      font-weight: 550;
+      margin-bottom: 4px;
+    }
+
+    /* Rad med fem emoji-ansikten */
+    .faces {
+      display: flex;
+      justify-content: space-between;
+      gap: 4px;
+    }
+    .face {
+      flex: 1;
+      min-height: 44px;            /* bekväm träffyta på mobil */
+      font-size: 1.7rem;
+      line-height: 1;
+      background: none;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      /* Oifyllt = dämpat, så det syns tydligt att inget är valt */
+      opacity: 0.4;
+      filter: grayscale(0.5);
+      transform: scale(1);
+      transition: opacity 0.18s ease, transform 0.18s ease,
+                  background 0.18s ease, filter 0.18s ease;
+    }
+    .face.selected {
+      opacity: 1;
+      filter: none;
+      transform: scale(1.18);
+      background: var(--accent-soft);
+    }
+    .face:active { transform: scale(0.92); }
+
+    /* Låg/hög-etiketter under skalan */
+    .scale-ends {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 2px;
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+
+    /* Sömntimmar: − [input] + */
+    .sleep-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 6px 0 2px;
+    }
+    .stepper {
+      width: 42px;
+      height: 42px;
+      flex: none;
+      font-size: 1.5rem;
+      line-height: 1;
+      color: var(--accent);
+      background: var(--accent-soft);
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .sleep-row input {
+      flex: 1;
+      width: 100%;
+      min-width: 0;
+      padding: 11px 12px;
+      font-size: 1.05rem;
+      text-align: center;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+    }
+    .sleep-row .unit { color: var(--muted); font-size: 0.95rem; }
+
+    /* Fritext */
+    .note {
+      width: 100%;
+      min-height: 84px;
+      padding: 12px;
+      font: inherit;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      resize: vertical;
+    }
+
+    /* Sticky spara-rad, ovanför flik-raden + safe-area */
+    .save-bar {
+      position: sticky;
+      bottom: calc(var(--tabbar-height) + env(safe-area-inset-bottom) + 8px);
+      margin-top: 18px;
+      padding-top: 8px;
+    }
+    .save-bar .btn { margin-top: 0; box-shadow: 0 4px 16px rgba(198,138,149,0.35); }
+
+    /* Liten bekräftelse-bubbla (återanvändbar) */
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: calc(var(--tabbar-height) + env(safe-area-inset-bottom) + 24px);
+      transform: translateX(-50%) translateY(8px);
+      z-index: 20;
+      padding: 11px 20px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #fff;
+      background: rgba(70, 58, 61, 0.92);
+      border-radius: 999px;
+      box-shadow: 0 6px 20px rgba(70, 58, 61, 0.25);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease, transform 0.25s ease;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .face, .toast { transition: none; }
+      .view.active { animation: none; }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- =======================================================================
+       RUBRIK – uppdateras när man byter vy
+       ==================================================================== -->
+  <header class="app-header">
+    <h1 id="view-title">Idag</h1>
+  </header>
+
+  <!-- =======================================================================
+       VYER  (bara rubrik + platshållare i detta steg)
+       ==================================================================== -->
+  <main>
+    <!-- 1. Översikt -->
+    <section id="view-idag" class="view active">
+      <p class="placeholder">Här kommer en överblick över dagen att visas.</p>
+    </section>
+
+    <!-- 2. Daglig måendecheck -->
+    <section id="view-maende" class="view">
+      <p class="placeholder">Här loggar du dagens mående (skattningar, fritext, sömn).</p>
+    </section>
+
+    <!-- 3. Medicin (escitalopram) -->
+    <section id="view-medicin" class="view">
+      <p class="placeholder">Här loggar du intag av escitalopram.</p>
+    </section>
+
+    <!-- 4. Blödningar -->
+    <section id="view-blodningar" class="view">
+      <p class="placeholder">Här loggar du mellanblödningar och mens.</p>
+    </section>
+
+    <!-- 5. Inställningar – export/import av all data -->
+    <section id="view-installningar" class="view">
+      <div class="card">
+        <strong>Säkerhetskopiering</strong>
+        <p class="hint" style="margin-top:6px;">
+          All data finns bara på den här telefonen. Exportera regelbundet så att
+          du kan flytta över allt om du byter telefon.
+        </p>
+        <button class="btn" id="btn-export">⬇️ Exportera all data (JSON)</button>
+        <button class="btn secondary" id="btn-import">⬆️ Importera från fil</button>
+        <input type="file" id="import-file" accept="application/json,.json" hidden />
+        <p class="hint" id="settings-status" aria-live="polite"></p>
+      </div>
+    </section>
+  </main>
+
+  <!-- =======================================================================
+       FLIK-RAD
+       ==================================================================== -->
+  <nav class="tabbar" id="tabbar">
+    <button class="tab active" data-view="idag" data-title="Idag">
+      <span class="icon">🏠</span><span>Idag</span>
+    </button>
+    <button class="tab" data-view="maende" data-title="Mående">
+      <span class="icon">🌤️</span><span>Mående</span>
+    </button>
+    <button class="tab" data-view="medicin" data-title="Medicin">
+      <span class="icon">💊</span><span>Medicin</span>
+    </button>
+    <button class="tab" data-view="blodningar" data-title="Blödningar">
+      <span class="icon">🩸</span><span>Blödningar</span>
+    </button>
+    <button class="tab" data-view="installningar" data-title="Inställningar">
+      <span class="icon">⚙️</span><span>Inställn.</span>
+    </button>
+  </nav>
+
+  <script>
+    "use strict";
+
+    /* ======================================================================
+       a) NAVIGERING mellan vyer
+       =================================================================== */
+    const tabbar = document.getElementById("tabbar");
+    const viewTitle = document.getElementById("view-title");
+
+    function showView(name, title) {
+      // Visa rätt sektion
+      document.querySelectorAll(".view").forEach((v) => {
+        v.classList.toggle("active", v.id === "view-" + name);
+      });
+      // Markera rätt flik
+      document.querySelectorAll(".tab").forEach((t) => {
+        t.classList.toggle("active", t.dataset.view === name);
+      });
+      // Uppdatera rubriken
+      viewTitle.textContent = title;
+      // Skrolla upp så ny vy börjar i toppen
+      window.scrollTo(0, 0);
+    }
+
+    tabbar.addEventListener("click", (e) => {
+      const tab = e.target.closest(".tab");
+      if (!tab) return;
+      showView(tab.dataset.view, tab.dataset.title);
+    });
+
+    /* ======================================================================
+       b) INDEXEDDB – liten hjälpmodul
+          Tre object stores som fylls på senare:
+            mood        – nyckel = datum (YYYY-MM-DD), en post per dag
+            medication  – auto-id, fält t.ex. { date, batchId }
+            bleeding    – auto-id, fält t.ex. { date, type, flow, mood }
+       =================================================================== */
+    const DB_NAME = "antonia-dagbok";
+    const DB_VERSION = 1;
+    const STORES = ["mood", "medication", "bleeding"];
+
+    let _dbPromise = null;
+
+    // Öppnar (och vid behov skapar) databasen. Cachar löftet.
+    function openDB() {
+      if (_dbPromise) return _dbPromise;
+      _dbPromise = new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          // mood: datum som nyckel → enkel upsert per dag
+          if (!db.objectStoreNames.contains("mood")) {
+            db.createObjectStore("mood", { keyPath: "date" });
+          }
+          // medication & bleeding: löpande id (flera poster per dag möjliga)
+          if (!db.objectStoreNames.contains("medication")) {
+            db.createObjectStore("medication", { keyPath: "id", autoIncrement: true });
+          }
+          if (!db.objectStoreNames.contains("bleeding")) {
+            db.createObjectStore("bleeding", { keyPath: "id", autoIncrement: true });
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      return _dbPromise;
+    }
+
+    // Liten hjälpare: kör en transaktion och returnera ett löfte på request-resultatet.
+    async function _tx(store, mode, fn) {
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(store, mode);
+        const req = fn(tx.objectStore(store));
+        tx.oncomplete = () => resolve(req ? req.result : undefined);
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
+    }
+
+    // Lägg till / uppdatera en post (put = upsert).
+    function addRecord(store, obj) {
+      return _tx(store, "readwrite", (os) => os.put(obj));
+    }
+
+    // Hämta en post via nyckel.
+    function getRecord(store, key) {
+      return _tx(store, "readonly", (os) => os.get(key));
+    }
+
+    // Hämta alla poster i en store.
+    function getAll(store) {
+      return _tx(store, "readonly", (os) => os.getAll());
+    }
+
+    // Töm en store (används vid import/återställning).
+    function clearStore(store) {
+      return _tx(store, "readwrite", (os) => os.clear());
+    }
+
+    // Gör hjälparna nåbara i konsolen så du lätt kan testa medan du bygger.
+    window.db = { openDB, addRecord, getRecord, getAll, clearStore, STORES };
+
+    /* ======================================================================
+       c) EXPORT / IMPORT av all data (Inställningar)
+       =================================================================== */
+    const statusEl = document.getElementById("settings-status");
+
+    function setStatus(msg) { statusEl.textContent = msg; }
+
+    function todayISO() {
+      return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    }
+
+    // Exportera alla stores till en nedladdningsbar JSON-fil.
+    async function exportData() {
+      try {
+        const data = {
+          app: "antonia-dagbok",
+          version: DB_VERSION,
+          exportedAt: new Date().toISOString(),
+        };
+        for (const store of STORES) {
+          data[store] = await getAll(store);
+        }
+
+        const blob = new Blob([JSON.stringify(data, null, 2)], {
+          type: "application/json",
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "antonias-dagbok-backup-" + todayISO() + ".json";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+
+        setStatus("Export klar – kontrollera din nedladdningsmapp.");
+      } catch (err) {
+        console.error(err);
+        setStatus("Något gick fel vid export: " + err.message);
+      }
+    }
+
+    // Importera en tidigare exporterad JSON-fil (ersätter befintlig data).
+    async function importData(file) {
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+
+        // Enkel validering – filen måste innehålla våra stores.
+        const hasStores = STORES.some((s) => Array.isArray(data[s]));
+        if (!hasStores) {
+          setStatus("Filen ser inte ut att vara en giltig backup.");
+          return;
+        }
+
+        const ok = confirm(
+          "Detta ersätter all nuvarande data med innehållet i filen. Fortsätta?"
+        );
+        if (!ok) {
+          setStatus("Import avbruten.");
+          return;
+        }
+
+        // Töm och fyll varje store.
+        for (const store of STORES) {
+          await clearStore(store);
+          const records = Array.isArray(data[store]) ? data[store] : [];
+          for (const rec of records) {
+            await addRecord(store, rec);
+          }
+        }
+
+        setStatus("Import klar – all data återställd.");
+      } catch (err) {
+        console.error(err);
+        setStatus("Något gick fel vid import: " + err.message);
+      }
+    }
+
+    document.getElementById("btn-export")
+      .addEventListener("click", exportData);
+
+    const importInput = document.getElementById("import-file");
+    document.getElementById("btn-import")
+      .addEventListener("click", () => importInput.click());
+    importInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (file) importData(file);
+      importInput.value = ""; // tillåt att samma fil väljs igen
+    });
+
+    /* ======================================================================
+       d) SERVICE WORKER – registrering (offline-stöd)
+          OBS: aktiveras bara i säker kontext (https eller localhost).
+       =================================================================== */
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("sw.js").then(
+          (reg) => console.log("Service worker registrerad:", reg.scope),
+          (err) => console.warn("Service worker kunde inte registreras:", err)
+        );
+      });
+    }
+
+    // Öppna databasen direkt så stores skapas vid första start.
+    openDB().catch((err) => console.error("Kunde inte öppna databasen:", err));
+  </script>
+</body>
+</html>
