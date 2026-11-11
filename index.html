@@ -596,6 +596,18 @@
       border-radius: 12px;
     }
 
+    /* Inloggningsfälten för synk (Inställningar). */
+    .sync-input {
+      width: 100%;
+      margin-top: 8px;
+      padding: 11px 12px;
+      font: inherit;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+    }
+
     /* Spara/Avbryt sida vid sida. */
     .bleed-actions { display: flex; gap: 8px; margin-top: 18px; }
     .bleed-actions .btn { margin-top: 0; }
@@ -818,11 +830,38 @@
 
     <!-- 5. Inställningar – export/import av all data -->
     <section id="view-installningar" class="view">
+      <!-- Synk mot Supabase: inloggad = data sparas även i molnet. -->
+      <div class="card">
+        <strong>Synk</strong>
+        <div id="sync-off" hidden>
+          <p class="hint" style="margin-top:6px;">
+            Synk är inte inställd ännu. All data sparas på den här telefonen.
+          </p>
+        </div>
+        <form id="sync-login" hidden>
+          <p class="hint" style="margin-top:6px;">
+            Logga in så sparas dagboken även säkert i molnet och följer med om
+            du byter telefon.
+          </p>
+          <input class="sync-input" type="email" id="sync-email"
+                 placeholder="E-post" autocomplete="username" required />
+          <input class="sync-input" type="password" id="sync-password"
+                 placeholder="Lösenord" autocomplete="current-password" required />
+          <button class="btn" type="submit" id="btn-sync-login">Logga in</button>
+        </form>
+        <div id="sync-on" hidden>
+          <p class="hint" style="margin-top:6px;" id="sync-user"></p>
+          <button class="btn" type="button" id="btn-sync-now">Synka nu</button>
+          <button class="btn secondary" type="button" id="btn-sync-logout">Logga ut</button>
+        </div>
+        <p class="hint" id="sync-status" aria-live="polite"></p>
+      </div>
+
       <div class="card">
         <strong>Säkerhetskopiering</strong>
         <p class="hint" style="margin-top:6px;">
-          All data finns bara på den här telefonen. Exportera regelbundet så att
-          du kan flytta över allt om du byter telefon.
+          Exportera då och då så har du en egen kopia av allt, oavsett vad som
+          händer med telefonen.
         </p>
         <button class="btn" id="btn-export">⬇️ Exportera all data (JSON)</button>
         <button class="btn secondary" id="btn-import">⬆️ Importera från fil</button>
@@ -856,6 +895,9 @@
     </button>
   </nav>
 
+  <!-- Supabase-klienten (låst version 2.119.0, lokal fil så den fungerar offline) -->
+  <script src="vendor/supabase.js"></script>
+
   <script>
     "use strict";
 
@@ -864,8 +906,10 @@
        =================================================================== */
     const tabbar = document.getElementById("tabbar");
     const viewTitle = document.getElementById("view-title");
+    let currentView = "idag";
 
     function showView(name, title) {
+      currentView = name;
       // Visa rätt sektion
       document.querySelectorAll(".view").forEach((v) => {
         v.classList.toggle("active", v.id === "view-" + name);
@@ -948,29 +992,136 @@
       });
     }
 
-    // Lägg till / uppdatera en post (put = upsert).
-    function addRecord(store, obj) {
+    /* --- Synk-fält på varje post ---
+       updatedAt  – när posten senast ändrades (ISO-tid)
+       dirty      – 1 = ändrad lokalt, ännu inte uppskickad till Supabase
+       deletedAt  – "mjuk" radering: posten ligger kvar som gravsten så att
+                    raderingen också kan synkas; getAll/getRecord döljer den
+       uid        – slumpat id för medication/bleeding. Det lokala löpnumret
+                    (id) skiljer sig mellan enheter, så uid är synk-nyckeln. */
+    const UID_STORES = ["medication", "bleeding"];
+
+    // Vilket fält som identifierar en post mellan enheter.
+    function syncKey(store, rec) {
+      if (store === "mood") return rec.date;
+      if (store === "courses") return rec.omgangId;
+      return rec.uid;
+    }
+
+    function newUid() {
+      if (crypto.randomUUID) return crypto.randomUUID();
+      // Reserv för osäker kontext (http över LAN), där randomUUID saknas.
+      const b = crypto.getRandomValues(new Uint8Array(16));
+      return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+    }
+
+    // Råa hjälpare: ingen stämpling, ingen filtrering (används av synken).
+    function _putRaw(store, obj) {
       return _tx(store, "readwrite", (os) => os.put(obj));
     }
-
-    // Hämta en post via nyckel.
-    function getRecord(store, key) {
+    function _getRaw(store, key) {
       return _tx(store, "readonly", (os) => os.get(key));
     }
-
-    // Hämta alla poster i en store.
-    function getAll(store) {
+    function _getAllRaw(store) {
       return _tx(store, "readonly", (os) => os.getAll());
     }
 
-    // Töm en store (används vid import/återställning).
+    // Lägg till / uppdatera en post (put = upsert). Stämplar synk-fälten.
+    async function addRecord(store, obj) {
+      if (UID_STORES.includes(store) && !obj.uid) {
+        // Vid redigering: behåll befintligt uid så posten inte dubbleras.
+        if (obj.id != null) {
+          const existing = await _getRaw(store, obj.id);
+          if (existing && existing.uid) obj.uid = existing.uid;
+        }
+        if (!obj.uid) obj.uid = newUid();
+      }
+      obj.updatedAt = new Date().toISOString();
+      obj.dirty = 1;
+      delete obj.deletedAt;
+      const result = await _putRaw(store, obj);
+      scheduleSync();
+      return result;
+    }
+
+    // Hämta en post via nyckel (raderade poster räknas som saknade).
+    async function getRecord(store, key) {
+      const rec = await _getRaw(store, key);
+      return rec && !rec.deletedAt ? rec : undefined;
+    }
+
+    // Hämta alla (ej raderade) poster i en store.
+    async function getAll(store) {
+      return (await _getAllRaw(store)).filter((r) => !r.deletedAt);
+    }
+
+    // Töm en store helt (endast för konsol-test; importen använder importAll).
     function clearStore(store) {
       return _tx(store, "readwrite", (os) => os.clear());
     }
 
-    // Ta bort en enskild post via nyckel (t.ex. en felregistrerad medicin-dag).
-    function deleteRecord(store, key) {
-      return _tx(store, "readwrite", (os) => os.delete(key));
+    // Ta bort en post: markeras som raderad så att raderingen kan synkas.
+    async function deleteRecord(store, key) {
+      const rec = await _getRaw(store, key);
+      if (!rec) return;
+      const now = new Date().toISOString();
+      rec.deletedAt = now;
+      rec.updatedAt = now;
+      rec.dirty = 1;
+      await _putRaw(store, rec);
+      scheduleSync();
+    }
+
+    // Ersätt ALL data med innehållet i en backup, i EN transaktion: antingen
+    // går allt igenom eller så ändras ingenting. Poster som inte finns i
+    // backupen blir gravstenar (så att ersättningen även når Supabase).
+    async function importAll(data) {
+      const db = await openDB();
+      const now = new Date().toISOString();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORES, "readwrite");
+        let failure = null;
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(failure || tx.error);
+        tx.onabort = () => reject(failure || tx.error);
+
+        STORES.forEach((store) => {
+          const os = tx.objectStore(store);
+          const incoming = Array.isArray(data[store]) ? data[store] : [];
+          const usesUid = UID_STORES.includes(store);
+          const req = os.getAll();
+          req.onsuccess = () => {
+            try {
+              const existingByKey = new Map();
+              req.result.forEach((r) => existingByKey.set(syncKey(store, r), r));
+
+              const kept = new Set();
+              incoming.forEach((src) => {
+                const rec = { ...src, updatedAt: now, dirty: 1 };
+                delete rec.deletedAt;
+                if (usesUid) {
+                  // Löpnumret från den gamla enheten kan krocka här: släpp det
+                  // och återanvänd bara det lokala id:t om uid:t redan finns.
+                  delete rec.id;
+                  if (!rec.uid) rec.uid = newUid();
+                  const match = existingByKey.get(rec.uid);
+                  if (match) rec.id = match.id;
+                }
+                kept.add(syncKey(store, rec));
+                os.put(rec);
+              });
+
+              req.result.forEach((r) => {
+                if (kept.has(syncKey(store, r))) return;
+                os.put({ ...r, deletedAt: r.deletedAt || now, updatedAt: now, dirty: 1 });
+              });
+            } catch (err) {
+              failure = err;
+              tx.abort();
+            }
+          };
+        });
+      });
     }
 
     // Gör hjälparna nåbara i konsolen så du lätt kan testa medan du bygger.
@@ -983,8 +1134,16 @@
 
     function setStatus(msg) { statusEl.textContent = msg; }
 
+    // Datum → "YYYY-MM-DD" i LOKAL tid. (toISOString() räknar i UTC och ger
+    // fel dag runt midnatt i Sverige – använd alltid den här i stället.)
+    function isoFromDate(d) {
+      return d.getFullYear() + "-" +
+        String(d.getMonth() + 1).padStart(2, "0") + "-" +
+        String(d.getDate()).padStart(2, "0");
+    }
+
     function todayISO() {
-      return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+      return isoFromDate(new Date());
     }
 
     // Exportera alla stores till en nedladdningsbar JSON-fil.
@@ -996,20 +1155,36 @@
           exportedAt: new Date().toISOString(),
         };
         for (const store of STORES) {
-          data[store] = await getAll(store);
+          // "dirty" är intern synk-bokföring och hör inte hemma i backupen.
+          data[store] = (await getAll(store)).map(({ dirty, ...rec }) => rec);
         }
 
-        const blob = new Blob([JSON.stringify(data, null, 2)], {
-          type: "application/json",
-        });
-        const url = URL.createObjectURL(blob);
+        const name = "antonias-dagbok-backup-" + todayISO() + ".json";
+        const json = JSON.stringify(data, null, 2);
+
+        // iPhone: delningsbladet ("Spara i Filer") är pålitligare än en
+        // nedladdningslänk i en app på hemskärmen.
+        const file = new File([json], name, { type: "application/json" });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({ files: [file], title: "Antonias dagbok – backup" });
+            setStatus("Export klar.");
+            return;
+          } catch (err) {
+            if (err.name === "AbortError") { setStatus("Export avbruten."); return; }
+            // Annat fel: fall tillbaka på vanlig nedladdning nedan.
+          }
+        }
+
+        const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
         const a = document.createElement("a");
         a.href = url;
-        a.download = "antonias-dagbok-backup-" + todayISO() + ".json";
+        a.download = name;
         document.body.appendChild(a);
         a.click();
         a.remove();
-        URL.revokeObjectURL(url);
+        // Vänta med att släppa adressen – Safari hinner annars inte ladda ner.
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
 
         setStatus("Export klar – kontrollera din nedladdningsmapp.");
       } catch (err) {
@@ -1040,13 +1215,10 @@
         }
 
         // Töm och fyll varje store.
-        for (const store of STORES) {
-          await clearStore(store);
-          const records = Array.isArray(data[store]) ? data[store] : [];
-          for (const rec of records) {
-            await addRecord(store, rec);
-          }
-        }
+        await importAll(data);
+        scheduleSync();
+        refreshCurrentView();
+        loadMoodForDate(moodDate);
 
         setStatus("Import klar – all data återställd.");
       } catch (err) {
@@ -1108,7 +1280,7 @@
     function shiftDate(iso, days) {
       const d = new Date(iso + "T00:00:00");
       d.setDate(d.getDate() + days);
-      return d.toISOString().slice(0, 10);
+      return isoFromDate(d);
     }
 
     // Bygg alla skattningsrader en gång och lägg i rätt grupp-container.
@@ -2116,6 +2288,259 @@
           (err) => console.warn("Service worker kunde inte registreras:", err)
         );
       });
+    }
+
+    /* ======================================================================
+       i) SYNK mot Supabase
+          Telefonens IndexedDB är alltid "sanningen": appen läser och skriver
+          lokalt och fungerar utan nät. Synken kör i bakgrunden när hon är
+          inloggad:
+            1) HÄMTA rader som ändrats på servern sedan sist (markör = serverns
+               updated_at) och slå ihop dem med det lokala.
+            2) SKICKA alla lokala poster med dirty = 1.
+          Krockregel: senast sparad version vinner (updatedAt). Misslyckas
+          något ligger posterna kvar som dirty till nästa försök.
+
+          Servern har EN tabell, "records": (user_id, store, key) → data (jsonb).
+          Se supabase/schema.sql.
+       =================================================================== */
+
+    // Fylls i när Supabase-projektet finns. Den publika nyckeln får ligga i
+    // koden – datan skyddas av inloggning + radnivåregler (RLS) i databasen.
+    const SUPABASE_URL = "https://nfurmmzorfdtqaraakdm.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_SXKG1NwoMFD9EC8OvtGveQ_wTVimP9v";
+
+    const sb = SUPABASE_URL && SUPABASE_KEY && window.supabase
+      ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+      : null;
+
+    let syncUser = null;       // inloggad användare (eller null)
+    let _syncRunning = false;  // lås: bara en synk åt gången
+    let _syncAgain = false;    // någon bad om synk medan en redan körde
+    let _syncTimer = null;
+
+    const syncStatusEl = document.getElementById("sync-status");
+    function setSyncStatus(msg) { syncStatusEl.textContent = msg; }
+
+    // Rita om den vy som visas (efter synk, import eller dygnsbyte).
+    // Mående-formuläret rörs inte här – där kan hon ha osparade val.
+    function refreshCurrentView() {
+      if (currentView === "idag") renderIdag();
+      if (currentView === "medicin") renderMedicin();
+      if (currentView === "blodningar") renderBleeding();
+    }
+
+    // Be om en synk strax (samlar ihop flera sparningar till en körning).
+    function scheduleSync() {
+      if (!sb || !syncUser) return;
+      clearTimeout(_syncTimer);
+      _syncTimer = setTimeout(sync, 1500);
+    }
+
+    // Första gången ett konto används på den här enheten: märk ALL lokal data
+    // som dirty (och ge äldre poster ett uid) så att den skickas upp.
+    async function prepareFirstSync(userId) {
+      if (localStorage.getItem("sync-user") === userId) return;
+      for (const store of STORES) {
+        for (const rec of await _getAllRaw(store)) {
+          if (UID_STORES.includes(store) && !rec.uid) rec.uid = newUid();
+          if (!rec.updatedAt) rec.updatedAt = new Date().toISOString();
+          rec.dirty = 1;
+          await _putRaw(store, rec);
+        }
+      }
+      localStorage.removeItem("sync-cursor");
+      localStorage.setItem("sync-user", userId);
+    }
+
+    // 1) HÄMTA: serverns ändringar sedan markören → slå ihop lokalt.
+    async function pullChanges(userId) {
+      let cursor = localStorage.getItem("sync-cursor");
+      let changed = false;
+      const local = {}; // store → Map(synk-nyckel → lokal post), laddas vid behov
+
+      for (;;) {
+        let q = sb.from("records")
+          .select("store,key,data,updated_at")
+          .eq("user_id", userId)
+          .order("updated_at", { ascending: true })
+          .limit(500);
+        if (cursor) q = q.gt("updated_at", cursor);
+        const { data: rows, error } = await q;
+        if (error) throw error;
+        if (!rows.length) break;
+
+        for (const row of rows) {
+          if (!STORES.includes(row.store)) continue; // okänd store: hoppa över
+          if (!local[row.store]) {
+            local[row.store] = new Map();
+            (await _getAllRaw(row.store)).forEach((r) =>
+              local[row.store].set(syncKey(row.store, r), r));
+          }
+          const mine = local[row.store].get(row.key);
+          const remote = row.data;
+
+          // Behåll det lokala om det har osparade ändringar som är nyare.
+          if (mine && mine.dirty && mine.updatedAt >= remote.updatedAt) continue;
+          // Redan samma version (t.ex. vår egen uppskickade rad): inget att göra.
+          if (mine && !mine.dirty && mine.updatedAt === remote.updatedAt) continue;
+
+          const rec = { ...remote };
+          delete rec.dirty;
+          if (UID_STORES.includes(row.store)) {
+            if (mine) rec.id = mine.id; else delete rec.id; // lokalt löpnummer
+          }
+          const newId = await _putRaw(row.store, rec);
+          if (UID_STORES.includes(row.store)) rec.id = newId;
+          local[row.store].set(row.key, rec);
+          changed = true;
+        }
+
+        cursor = rows[rows.length - 1].updated_at;
+        localStorage.setItem("sync-cursor", cursor);
+        if (rows.length < 500) break;
+      }
+      return changed;
+    }
+
+    // 2) SKICKA: alla lokala poster med dirty = 1.
+    async function pushChanges(userId) {
+      for (const store of STORES) {
+        const dirty = (await _getAllRaw(store)).filter((r) => r.dirty);
+        if (!dirty.length) continue;
+
+        const rows = dirty.map((rec) => {
+          const data = { ...rec };
+          delete data.dirty;
+          if (UID_STORES.includes(store)) delete data.id; // lokalt löpnummer
+          return {
+            user_id: userId, store, key: String(syncKey(store, rec)),
+            data, deleted_at: rec.deletedAt || null,
+          };
+        });
+        const { error } = await sb.from("records")
+          .upsert(rows, { onConflict: "user_id,store,key" });
+        if (error) throw error;
+
+        // Släck dirty – men bara om posten inte hunnit ändras under tiden.
+        for (const rec of dirty) {
+          const key = store === "mood" ? rec.date
+            : store === "courses" ? rec.omgangId : rec.id;
+          const now = await _getRaw(store, key);
+          if (now && now.updatedAt === rec.updatedAt) {
+            delete now.dirty;
+            await _putRaw(store, now);
+          }
+        }
+      }
+    }
+
+    // Kör en hel synk (hämta, sedan skicka). Tyst vid fel: försöker igen senare.
+    async function sync() {
+      if (!sb || !syncUser) return;
+      if (_syncRunning) { _syncAgain = true; return; }
+      _syncRunning = true;
+      try {
+        const userId = syncUser.id;
+        await prepareFirstSync(userId);
+        const changed = await pullChanges(userId);
+        await pushChanges(userId);
+        localStorage.setItem("sync-last", new Date().toISOString());
+        renderSyncUI();
+        if (changed) {
+          refreshCurrentView();
+          if (currentView !== "maende") loadMoodForDate(moodDate);
+        }
+      } catch (err) {
+        console.warn("Synk misslyckades:", err);
+        setSyncStatus(navigator.onLine
+          ? "Kunde inte synka just nu – försöker igen senare."
+          : "Ingen anslutning – synkar när nätet är tillbaka.");
+      } finally {
+        _syncRunning = false;
+        if (_syncAgain) { _syncAgain = false; scheduleSync(); }
+      }
+    }
+
+    // Visa rätt del av synk-kortet i Inställningar.
+    function renderSyncUI() {
+      document.getElementById("sync-off").hidden = !!sb;
+      document.getElementById("sync-login").hidden = !sb || !!syncUser;
+      document.getElementById("sync-on").hidden = !sb || !syncUser;
+      if (!sb || !syncUser) return;
+
+      document.getElementById("sync-user").textContent =
+        "Inloggad som " + syncUser.email + ".";
+      const last = localStorage.getItem("sync-last");
+      setSyncStatus(last
+        ? "Senast synkad " + new Intl.DateTimeFormat("sv-SE", {
+            day: "numeric", month: "long", hour: "2-digit", minute: "2-digit",
+          }).format(new Date(last)) + "."
+        : "Inte synkad ännu.");
+    }
+
+    document.getElementById("sync-login").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!sb) return;
+      const btn = document.getElementById("btn-sync-login");
+      btn.disabled = true;
+      setSyncStatus("Loggar in …");
+      const { error } = await sb.auth.signInWithPassword({
+        email: document.getElementById("sync-email").value.trim(),
+        password: document.getElementById("sync-password").value,
+      });
+      btn.disabled = false;
+      document.getElementById("sync-password").value = "";
+      if (error) setSyncStatus("Kunde inte logga in. Kontrollera e-post och lösenord.");
+    });
+
+    document.getElementById("btn-sync-now").addEventListener("click", async () => {
+      setSyncStatus("Synkar …");
+      await sync();
+    });
+
+    document.getElementById("btn-sync-logout").addEventListener("click", async () => {
+      if (!confirm("Logga ut? Dagboken ligger kvar på telefonen men slutar synkas.")) return;
+      await sb.auth.signOut();
+    });
+
+    if (sb) {
+      // Körs vid start (sparad inloggning) och vid in-/utloggning.
+      sb.auth.onAuthStateChange((_event, session) => {
+        const user = session ? session.user : null;
+        const wasSameUser = syncUser && user && syncUser.id === user.id;
+        syncUser = user;
+        if (wasSameUser) return; // bara en förnyad nyckel – inget att göra
+        // Supabase-anrop får inte göras direkt i den här återkopplingen.
+        setTimeout(() => {
+          renderSyncUI();
+          if (syncUser) sync(); else setSyncStatus("");
+        }, 0);
+      });
+      window.addEventListener("online", () => scheduleSync());
+    }
+    renderSyncUI();
+
+    /* --- När appen kommer tillbaka i förgrunden ---
+       En app på hemskärmen laddas inte om, den fortsätter där den var. Om
+       dygnet hunnit bytas ska "idag" följa med, och synken får en chans. */
+    let lastSeenDay = todayISO();
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible") return;
+      const today = todayISO();
+      if (today !== lastSeenDay) {
+        // Stod Mående på "idag"? Flytta då med till den nya dagen.
+        if (moodDate === lastSeenDay) loadMoodForDate(today);
+        else renderDateNav();
+        lastSeenDay = today;
+      }
+      refreshCurrentView();
+      scheduleSync();
+    });
+
+    // Be webbläsaren att inte rensa lagringen när utrymmet tryter.
+    if (navigator.storage && navigator.storage.persist) {
+      navigator.storage.persist().catch(() => {});
     }
 
     // Öppna databasen direkt så stores skapas vid första start, och försök

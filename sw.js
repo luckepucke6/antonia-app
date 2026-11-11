@@ -8,13 +8,14 @@
  * av filerna nedan, annars fortsätter den gamla cachade versionen att serveras.
  */
 
-const CACHE_NAME = "antonia-dagbok-v4";
+const CACHE_NAME = "antonia-dagbok-v6";
 
 // Filer som ska finnas tillgängliga offline.
 const PRECACHE_URLS = [
   "./",
   "./index.html",
   "./manifest.json",
+  "./vendor/supabase.js",
   "./icons/icon-180.png",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
@@ -48,6 +49,9 @@ self.addEventListener("fetch", (event) => {
 
   // Vi cachar bara GET-anrop.
   if (request.method !== "GET") return;
+
+  // Anrop till andra servrar (Supabase) ska alltid gå direkt till nätet.
+  if (new URL(request.url).origin !== self.location.origin) return;
 
   event.respondWith(
     caches.match(request).then((cached) => {

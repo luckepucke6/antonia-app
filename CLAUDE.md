@@ -5,9 +5,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 "Antonias dagbok <3" — a private health-tracking PWA built for one person's
-iPhone. Installed via Safari "Add to Home Screen", runs offline. **All data is
-stored locally in IndexedDB** — there is no server, no login, no cloud. The only
-way data leaves the device is the manual JSON export/import in Settings.
+iPhone. Installed via Safari "Add to Home Screen",
+runs offline. **IndexedDB on the phone is the source of truth**; when she is
+logged in, data also syncs to a Supabase project (`antonia-dagbok`, region
+Stockholm) as backup and for a second device. The JSON export/import in
+Settings still works as a manual backup.
 
 UI text is in Swedish; keep it that way.
 
@@ -19,7 +21,8 @@ UI text is in Swedish; keep it that way.
 - `index.html` is intentionally self-contained: CSS lives in one `<style>`
   block and all app JS in one `<script>` block. `sw.js` and `manifest.json`
   must stay separate files (service workers can't be inline; the manifest is
-  linked).
+  linked). `vendor/supabase.js` is supabase-js 2.119.0 (UMD), vendored and
+  precached so nothing is loaded from a CDN at runtime.
 
 ## Architecture
 
@@ -48,8 +51,29 @@ sections:
 `sw.js` is cache-first with network fallback over a static precache list
 (`CACHE_NAME`). User data is never in the cache (it's in IndexedDB).
 
-The four views currently hold only a heading + placeholder; features get built
-one view at a time.
+There is a fourth store, `courses` (`keyPath: "omgangId"`), for medication
+courses. Later sections in the script: (e) Mående, (f) Medicin, (g) Blödningar,
+(h) Idag, (i) Sync.
+
+## Sync (section i)
+
+- Server: one generic table `records (user_id, store, key, data jsonb,
+  updated_at, deleted_at)` plus `shares (owner, viewer)` for read-only access.
+  Schema and RLS policies live in `supabase/schema.sql`. Sign-ups are disabled;
+  app logins are created by hand in the Supabase dashboard.
+- `addRecord` stamps `updatedAt`, `dirty = 1` and (medication/bleeding) a `uid`.
+  `deleteRecord` is a **soft delete** (`deletedAt` tombstone); `getAll` /
+  `getRecord` hide tombstones. Use `_getAllRaw` / `_putRaw` only in sync code.
+- Sync key per store: `mood` → `date`, `courses` → `omgangId`,
+  `medication`/`bleeding` → `uid` (the local autoIncrement `id` differs per
+  device and is never sent).
+- `sync()` pulls rows newer than the cursor (server `updated_at`), then pushes
+  dirty records. Conflict rule: latest `updatedAt` wins. State lives in
+  `localStorage` (`sync-user`, `sync-cursor`, `sync-last`).
+- Only the publishable key (`sb_publishable_…`) may be in the repo. Never commit
+  a secret key, access token or exported backup.
+- Dates: always use `todayISO()` / `isoFromDate()` (local time). Never
+  `toISOString().slice(0, 10)` — it is UTC and gives the wrong day in Sweden.
 
 ## Critical gotchas
 
@@ -73,5 +97,5 @@ python3 gen_icons.py
 ```
 
 There is no test suite or linter. Manual verification: DevTools → Application
-(manifest loaded, service worker "activated", DB `antonia-dagbok` has 3 stores),
+(manifest loaded, service worker "activated", DB `antonia-dagbok` has 4 stores),
 then exercise export/import in the Settings (Inställningar) view.
