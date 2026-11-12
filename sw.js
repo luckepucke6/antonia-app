@@ -8,7 +8,7 @@
  * av filerna nedan, annars fortsätter den gamla cachade versionen att serveras.
  */
 
-const CACHE_NAME = "antonia-dagbok-v10";
+const CACHE_NAME = "antonia-dagbok-v11";
 
 // Filer som ska finnas tillgängliga offline.
 const PRECACHE_URLS = [
@@ -24,7 +24,11 @@ const PRECACHE_URLS = [
 // Installera: lägg appens skal i cachen och aktivera direkt.
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS))
+    // cache: "reload" hämtar filerna direkt från servern. Annars kan en gammal
+    // kopia ur webbläsarens vanliga cache hamna i den nya versionen.
+    caches.open(CACHE_NAME).then((cache) =>
+      cache.addAll(PRECACHE_URLS.map((url) => new Request(url, { cache: "reload" })))
+    )
   );
   self.skipWaiting();
 });
