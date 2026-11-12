@@ -596,6 +596,37 @@
       border-radius: 12px;
     }
 
+    /* Stödkortet för tyngre dagar (Idag). Lugnt och varmt – inga larmfärger. */
+    .support-title { font-size: 1.05rem; font-weight: 600; margin-top: 4px; }
+    .support-group {
+      margin-top: 16px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .support-list { margin: 6px 0 0; padding-left: 20px; }
+    .support-list li { margin-top: 6px; line-height: 1.45; }
+    .support-own {
+      margin-top: 8px;
+      padding: 12px 14px;
+      background: var(--accent-soft);
+      border-radius: 12px;
+      white-space: pre-line;
+      line-height: 1.45;
+    }
+    .text-btn {
+      margin-top: 8px;
+      padding: 4px 0;
+      font: inherit;
+      font-size: 0.9rem;
+      color: var(--accent);
+      background: none;
+      border: none;
+      cursor: pointer;
+    }
+
     /* Inloggningsfälten för synk (Inställningar). */
     .sync-input {
       width: 100%;
@@ -943,11 +974,14 @@
             bleeding    – auto-id, fält t.ex. { date, type, flow, mood }
             courses     – nyckel = omgangId, en post per medicin-omgång (kur):
                           { omgangId, startdatum, slutdatum, active }
+            notes       – nyckel = key, egna texter: { key, text }
+                          (t.ex. key "helps" = listan "Det här hjälper mig")
        =================================================================== */
     const DB_NAME = "antonia-dagbok";
     // v2: lade till "courses"-store för escitalopram-omgångar.
-    const DB_VERSION = 2;
-    const STORES = ["mood", "medication", "bleeding", "courses"];
+    // v3: lade till "notes"-store för egna texter (stödkortet i Idag).
+    const DB_VERSION = 3;
+    const STORES = ["mood", "medication", "bleeding", "courses", "notes"];
 
     let _dbPromise = null;
 
@@ -972,6 +1006,10 @@
           // courses: en post per medicin-omgång, omgangId som nyckel (upsert).
           if (!db.objectStoreNames.contains("courses")) {
             db.createObjectStore("courses", { keyPath: "omgangId" });
+          }
+          // notes: egna texter, en post per namn (upsert).
+          if (!db.objectStoreNames.contains("notes")) {
+            db.createObjectStore("notes", { keyPath: "key" });
           }
         };
         req.onsuccess = () => resolve(req.result);
@@ -1005,7 +1043,13 @@
     function syncKey(store, rec) {
       if (store === "mood") return rec.date;
       if (store === "courses") return rec.omgangId;
+      if (store === "notes") return rec.key;
       return rec.uid;
+    }
+
+    // Postens nyckel i den LOKALA databasen (keyPath för respektive store).
+    function localKey(store, rec) {
+      return UID_STORES.includes(store) ? rec.id : syncKey(store, rec);
     }
 
     function newUid() {
@@ -1086,8 +1130,10 @@
         tx.onabort = () => reject(failure || tx.error);
 
         STORES.forEach((store) => {
+          // En äldre backup kan sakna nyare stores: låt dem då vara orörda.
+          if (!Array.isArray(data[store])) return;
           const os = tx.objectStore(store);
-          const incoming = Array.isArray(data[store]) ? data[store] : [];
+          const incoming = data[store];
           const usesUid = UID_STORES.includes(store);
           const req = os.getAll();
           req.onsuccess = () => {
@@ -2234,13 +2280,131 @@
         '<span>🩸 ' + text + "</span><span class=\"card-link-arrow\">›</span></button>";
     }
 
+    /* --- Stöd vid tyngre perioder ---
+       Appen tittar på de tre senaste dagarnas måendeloggning och visar ett
+       lugnt kort med tankestöd när det verkar tungt. Allt räknas ut här på
+       telefonen. Kortet ger aldrig medicinråd – det pekar bara på den plan hon
+       redan har.
+       Egen lista "Det här hjälper mig" sparas i notes (key "helps"). */
+    let supportOpen = false;     // öppnat för hand (visas även en bra dag)
+    let supportEditing = false;  // redigerar den egna listan
+
+    function escapeHTML(str) {
+      return String(str).replace(/[<>&"]/g, (c) =>
+        ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]));
+    }
+
+    // En "tung dag": lågt humör eller hög ångest/oro (bara ifyllda värden).
+    function isHeavyDay(rec) {
+      const s = (rec && rec.scores) || {};
+      return (s.humor != null && s.humor <= 2) ||
+             (s.angest != null && s.angest >= 4);
+    }
+
+    // Tyngre period: idag är tung, eller minst två av de tre senaste dagarna.
+    // recentMood = [idag, igår, i förrgår] (poster eller undefined).
+    function isLowPeriod(recentMood) {
+      const heavy = recentMood.map(isHeavyDay);
+      return heavy[0] || heavy.filter(Boolean).length >= 2;
+    }
+
+    // Mycket magbesvär idag eller igår → visa även mag-tipsen.
+    function hasStomachTrouble(recentMood) {
+      return recentMood.slice(0, 2).some((rec) =>
+        rec && rec.scores && rec.scores.magbesvar >= 4);
+    }
+
+    const SUPPORT_TIPS = {
+      tanken: [
+        "Tunga tankar blir starkare under de här perioderna. De säger inte hela sanningen om dig eller ditt liv.",
+        "Det brukar lätta. Du har tagit dig igenom det här förut.",
+        "Skjut upp stora beslut och svåra samtal om det går. De finns kvar när det har lättat.",
+        "Sänk kraven. Det räcker att göra det nödvändigaste i dag.",
+      ],
+      kroppen: [
+        "Försök äta och sova på ungefär vanliga tider, även om lusten saknas.",
+        "Rör dig lite och lugnt. En kort promenad eller några minuters stretch räcker.",
+        "Värme hjälper ofta, till exempel en varm dusch eller en värmekudde.",
+      ],
+      magen: [
+        "Ät lugnt, och hellre lite och ofta än mycket på en gång.",
+        "Håll dig till mat du vet att magen brukar tåla.",
+        "Värme mot magen och långsamma andetag kan lindra när det krampar.",
+      ],
+      manniskor: [
+        "Berätta för någon du litar på hur du har det. Du behöver inte förklara allt.",
+      ],
+    };
+
+    function tipListHTML(title, tips) {
+      return '<div class="support-group">' + title + "</div>" +
+        '<ul class="support-list">' +
+        tips.map((t) => "<li>" + t + "</li>").join("") + "</ul>";
+    }
+
+    // Bygg stödkortet (eller bara en diskret länk en vanlig dag).
+    function buildSupport(recentMood, helpsText, today) {
+      const low = isLowPeriod(recentMood);
+      const hiddenToday = localStorage.getItem("support-hidden") === today;
+
+      if (!supportOpen && (!low || hiddenToday)) {
+        return '<button type="button" class="card-link" data-act="support-open">' +
+          "<span>💗 Stöd för tyngre dagar</span>" +
+          '<span class="card-link-arrow">›</span></button>';
+      }
+
+      let html = '<div class="card">';
+      if (low) {
+        html += '<div class="support-title">Det verkar vara en tyngre period just nu 💗</div>';
+        html += '<p class="status-sub" style="margin:6px 0 0">Det du känner är ' +
+                "verkligt. Här är några saker som kan göra dagen lite lättare.</p>";
+      } else {
+        html += '<div class="support-title">Stöd för tyngre dagar 💗</div>';
+      }
+
+      // Hennes egna ord kommer först – de väger tyngst en tung dag.
+      html += '<div class="support-group">Det här hjälper mig</div>';
+      if (supportEditing) {
+        html += '<textarea class="note" id="support-helps" rows="5" placeholder="' +
+                'Till exempel: ringa mamma, gå ut med hunden, min spellista …">' +
+                escapeHTML(helpsText) + "</textarea>";
+        html += '<button type="button" class="btn" data-act="support-save">Spara</button>';
+      } else if (helpsText) {
+        html += '<div class="support-own">' + escapeHTML(helpsText) + "</div>";
+        html += '<button type="button" class="text-btn" data-act="support-edit">Ändra</button>';
+      } else {
+        html += '<p class="status-sub" style="margin:6px 0 0">Skriv ner vad som ' +
+                "brukar hjälpa dig, gärna en dag när du mår bra. Då finns det " +
+                "här när du behöver det.</p>";
+        html += '<button type="button" class="text-btn" data-act="support-edit">Skriv din lista</button>';
+      }
+
+      html += tipListHTML("Tanken", SUPPORT_TIPS.tanken);
+      html += tipListHTML("Kroppen", SUPPORT_TIPS.kroppen);
+      if (hasStomachTrouble(recentMood)) html += tipListHTML("Magen", SUPPORT_TIPS.magen);
+      html += tipListHTML("Människor", SUPPORT_TIPS.manniskor);
+
+      html += '<div class="support-group">Din plan</div>';
+      html += '<p class="status-sub" style="margin:6px 0 0">Har du och din läkare ' +
+              "en plan för de här perioderna? Nu kan vara läge att titta på den.</p>";
+      html += '<button type="button" class="text-btn" data-act="support-med">Öppna Medicin</button>';
+
+      html += '<button type="button" class="btn secondary" data-act="support-close">' +
+              (low && !supportOpen ? "Dölj för idag" : "Stäng") + "</button>";
+      return html + "</div>";
+    }
+
     // Bygg om hela Idag-vyn från databasen.
     async function renderIdag() {
       const today = todayISO();
-      const [moodRec, courses, meds, bleed] = await Promise.all([
+      const [moodRec, courses, meds, bleed, mood1, mood2, helps] = await Promise.all([
         getRecord("mood", today), getAll("courses"),
         getAll("medication"), getAll("bleeding"),
+        getRecord("mood", shiftDate(today, -1)),
+        getRecord("mood", shiftDate(today, -2)),
+        getRecord("notes", "helps"),
       ]);
+      const recentMood = [moodRec, mood1, mood2];
 
       const dateStr = new Intl.DateTimeFormat("sv-SE", {
         weekday: "long", day: "numeric", month: "long",
@@ -2248,9 +2412,14 @@
 
       let html = '<div class="greeting">' + greetingFor(new Date()) + " 💗</div>";
       html += '<div class="greeting-date">' + dateStr + "</div>";
+      const support = buildSupport(recentMood, (helps && helps.text) || "", today);
+      // En tung dag hamnar stödet överst, annars som en diskret länk längst ner.
+      const supportFirst = !support.startsWith("<button");
+      if (supportFirst) html += support;
       html += buildIdagMood(moodRec);
       html += buildIdagMed(courses, meds, today);
       html += buildIdagBleed(bleed, today);
+      if (!supportFirst) html += support;
 
       idagContent.innerHTML = html;
     }
@@ -2270,6 +2439,32 @@
           break;
         case "blod":
           showView("blodningar", "Blödningar");
+          break;
+        case "support-open":
+          supportOpen = true;
+          await renderIdag();
+          break;
+        case "support-close":
+          // Öppnat för hand → bara stäng. Visat automatiskt → dölj resten av dagen.
+          if (!supportOpen) localStorage.setItem("support-hidden", todayISO());
+          supportOpen = false;
+          supportEditing = false;
+          await renderIdag();
+          break;
+        case "support-edit":
+          supportEditing = true;
+          await renderIdag();
+          break;
+        case "support-save": {
+          const text = document.getElementById("support-helps").value.trim();
+          await addRecord("notes", { key: "helps", text });
+          supportEditing = false;
+          showToast("Sparat ✓");
+          await renderIdag();
+          break;
+        }
+        case "support-med":
+          showView("medicin", "Medicin");
           break;
       }
     });
@@ -2325,7 +2520,8 @@
     // Rita om den vy som visas (efter synk, import eller dygnsbyte).
     // Mående-formuläret rörs inte här – där kan hon ha osparade val.
     function refreshCurrentView() {
-      if (currentView === "idag") renderIdag();
+      // Skriver hon i sin egen lista just nu får texten inte ritas över.
+      if (currentView === "idag" && !supportEditing) renderIdag();
       if (currentView === "medicin") renderMedicin();
       if (currentView === "blodningar") renderBleeding();
     }
@@ -2424,9 +2620,7 @@
 
         // Släck dirty – men bara om posten inte hunnit ändras under tiden.
         for (const rec of dirty) {
-          const key = store === "mood" ? rec.date
-            : store === "courses" ? rec.omgangId : rec.id;
-          const now = await _getRaw(store, key);
+          const now = await _getRaw(store, localKey(store, rec));
           if (now && now.updatedAt === rec.updatedAt) {
             delete now.dirty;
             await _putRaw(store, now);
