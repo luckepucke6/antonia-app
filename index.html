@@ -68,6 +68,16 @@
       padding: calc(env(safe-area-inset-top) + 14px) 20px 12px;
       border-bottom: 1px solid var(--line);
     }
+    .app-header { display: flex; align-items: center; justify-content: space-between; }
+    .header-btn {
+      padding: 4px;
+      font-size: 1.25rem;
+      line-height: 1;
+      background: none;
+      border: none;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
     .app-header h1 {
       margin: 0;
       font-size: 1.5rem;
@@ -627,6 +637,73 @@
       cursor: pointer;
     }
 
+    /* ------------------------------------------------------------------
+       Mönster-vyn: tidslinje med en rad per symtom och en ruta per dag.
+       Mörkare ruta = tyngre dag. Inga larmfärger.
+       --------------------------------------------------------------- */
+    .pt-row { margin-top: 10px; }
+    .pt-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-bottom: 3px;
+    }
+    .pt-strip { display: grid; gap: 1px; }
+    .pt-cell {
+      height: 16px;
+      border-radius: 2px;
+      /* Ej loggat: bara en tunn ram, så det inte förväxlas med en lätt dag. */
+      background: transparent;
+      box-shadow: inset 0 0 0 1px var(--line);
+      cursor: pointer;
+    }
+    .pt-cell.sel { box-shadow: 0 0 0 1.5px var(--text); position: relative; z-index: 1; }
+    .pt-axis {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 6px;
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    .pt-legend {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 12px;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .pt-legend i { width: 14px; height: 10px; border-radius: 2px; display: inline-block; }
+    .day-detail-list { margin: 8px 0 0; padding: 0; list-style: none; }
+    .day-detail-list li {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-top: 1px solid var(--line);
+      font-size: 0.92rem;
+    }
+
+    /* Läkarrapporten: syns bara vid utskrift. */
+    #print-report { display: none; }
+    @media print {
+      .app-header, .tabbar, .toast, main { display: none !important; }
+      body { background: #fff; padding: 0; }
+      #print-report { display: block; padding: 0; color: #000; font-size: 9pt; }
+      #print-report h1 { font-size: 14pt; margin: 0 0 4pt; }
+      #print-report p { margin: 0 0 6pt; }
+      #print-report table { width: 100%; border-collapse: collapse; }
+      #print-report th, #print-report td {
+        border: 0.5pt solid #999;
+        padding: 2pt 3pt;
+        text-align: center;
+        font-size: 8pt;
+      }
+      #print-report td:first-child, #print-report th:first-child { text-align: left; white-space: nowrap; }
+      #print-report thead { display: table-header-group; }
+      #print-report tr { break-inside: avoid; }
+    }
+
     /* Inloggningsfälten för synk (Inställningar). */
     .sync-input {
       width: 100%;
@@ -754,6 +831,8 @@
        ==================================================================== -->
   <header class="app-header">
     <h1 id="view-title">Idag</h1>
+    <button class="header-btn" id="btn-settings" type="button"
+            aria-label="Inställningar">⚙️</button>
   </header>
 
   <!-- =======================================================================
@@ -859,7 +938,12 @@
       <div id="bleeding-content"></div>
     </section>
 
-    <!-- 5. Inställningar – export/import av all data -->
+    <!-- 5. Mönster – tidslinje över loggningen + läkarrapport -->
+    <section id="view-monster" class="view">
+      <div id="monster-content"></div>
+    </section>
+
+    <!-- 6. Inställningar (nås via kugghjulet) – synk + export/import -->
     <section id="view-installningar" class="view">
       <!-- Synk mot Supabase: inloggad = data sparas även i molnet. -->
       <div class="card">
@@ -902,6 +986,9 @@
     </section>
   </main>
 
+  <!-- Läkarrapporten: fylls i precis före utskrift, dold på skärmen. -->
+  <div id="print-report"></div>
+
   <!-- Liten bekräftelse-bubbla (delas av alla vyer) -->
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
@@ -921,8 +1008,8 @@
     <button class="tab" data-view="blodningar" data-title="Blödningar">
       <span class="icon">🩸</span><span>Blödningar</span>
     </button>
-    <button class="tab" data-view="installningar" data-title="Inställningar">
-      <span class="icon">⚙️</span><span>Inställn.</span>
+    <button class="tab" data-view="monster" data-title="Mönster">
+      <span class="icon">📈</span><span>Mönster</span>
     </button>
   </nav>
 
@@ -957,7 +1044,12 @@
       if (name === "idag") renderIdag();
       if (name === "medicin") renderMedicin();
       if (name === "blodningar") renderBleeding();
+      if (name === "monster") renderMonster();
     }
+
+    // Kugghjulet i sidhuvudet öppnar Inställningar (ingen egen flik).
+    document.getElementById("btn-settings").addEventListener("click", () =>
+      showView("installningar", "Inställningar"));
 
     tabbar.addEventListener("click", (e) => {
       const tab = e.target.closest(".tab");
@@ -2473,6 +2565,272 @@
     renderIdag();
 
     /* ======================================================================
+       j) MÖNSTER-VYN – tidslinje, jämförelser och läkarrapport
+
+       Visar loggningen över KALENDERTID (hon tar p-piller kontinuerligt, så
+       det finns inga cykelfaser att räkna på). En rad per symtom, en ruta per
+       dag; mörkare ruta = tyngre dag. Blödningar och medicinomgångar ligger
+       som egna rader överst så att man ser hur de sammanfaller med måendet.
+       Inga prognoser och inga diagnoser – bara det som faktiskt loggats.
+       =================================================================== */
+    const monsterContent = document.getElementById("monster-content");
+    const MONSTER_PERIODS = [30, 90];
+    let monsterDays = 30;        // hur många dagar bakåt som visas
+    let monsterSelected = null;  // vald dag (YYYY-MM-DD) eller null
+
+    // Kortnamn till rapportens kolumner.
+    const METRIC_SHORT = {
+      humor: "Humör", irritabilitet: "Irrit.", angest: "Ångest",
+      kanslighet: "Känsl.", intensitet: "Intens.", delusion: "Delus.",
+      energi: "Energi", magbesvar: "Mage", stress: "Stress",
+      sleepQuality: "Sömnkv.",
+    };
+    const FLOW_LEVEL = { spotting: 1, latt: 2, medel: 3, rikligt: 4 };
+
+    // "Tyngd" 1–5 för ett värde: för skalor där högt = bra vänds värdet.
+    function heaviness(metric, value) {
+      return metric.scale === "valence" ? 6 - value : value;
+    }
+    // Sömntimmar → tyngd 1–5 (mindre sömn = tyngre).
+    function sleepHeaviness(h) {
+      if (h >= 8) return 1;
+      if (h >= 7) return 2;
+      if (h >= 6) return 3;
+      if (h >= 5) return 4;
+      return 5;
+    }
+    function fmtAvg(n) { return n.toFixed(1).replace(".", ","); }
+    function avg(list) { return list.reduce((a, b) => a + b, 0) / list.length; }
+
+    // Samla allt per datum för de senaste n dagarna (äldst först).
+    function collectDays(n, mood, bleeding, meds, courses) {
+      const today = todayISO();
+      const moodBy = new Map(mood.map((m) => [m.date, m]));
+      const bleedBy = new Map(bleeding.map((b) => [b.date, b]));
+      const medBy = new Map(meds.map((m) => [m.date, m]));
+      const days = [];
+      for (let i = n - 1; i >= 0; i--) {
+        const date = shiftDate(today, -i);
+        days.push({
+          date,
+          mood: moodBy.get(date) || null,
+          bleed: bleedBy.get(date) || null,
+          med: medBy.get(date) || null,
+          inCourse: courses.some((c) =>
+            date >= c.startdatum && date <= (c.slutdatum || today)),
+        });
+      }
+      return days;
+    }
+
+    // En rad i tidslinjen. cellFn(dag) → { color, title } eller null (ej loggat).
+    function stripRowHTML(label, right, days, cellFn) {
+      const cells = days.map((d) => {
+        const c = cellFn(d);
+        return '<div class="pt-cell' + (d.date === monsterSelected ? " sel" : "") +
+          '" data-date="' + d.date + '"' +
+          (c ? ' style="background:' + c + '"' : "") + "></div>";
+      }).join("");
+      return '<div class="pt-row"><div class="pt-label"><span>' + label +
+        "</span><span>" + (right || "") + "</span></div>" +
+        '<div class="pt-strip" style="grid-template-columns:repeat(' +
+        days.length + ',1fr)">' + cells + "</div></div>";
+    }
+    const tone = (level) => "rgba(176,96,112," + (level / 5).toFixed(2) + ")";
+
+    function buildTimeline(days) {
+      let html = '<div class="card">';
+      html += '<div class="dose-group" id="monster-period">' +
+        MONSTER_PERIODS.map((n) =>
+          '<button type="button" class="dose-opt' + (n === monsterDays ? " selected" : "") +
+          '" data-days="' + n + '">' + n + " dagar</button>").join("") + "</div>";
+
+      const logged = days.filter((d) => d.mood).length;
+      html += '<p class="hint" style="margin-top:10px">Loggat ' + logged + " av " +
+              days.length + " dagar. Tryck på en dag för att se den.</p>";
+
+      // Markör-rader: medicin och blödning.
+      html += stripRowHTML("Medicin", "", days, (d) =>
+        d.med ? "rgba(122,150,136,1)" : d.inCourse ? "rgba(122,150,136,0.3)" : null);
+      html += stripRowHTML("Blödning", "", days, (d) =>
+        d.bleed ? "rgba(180,80,94," + (0.25 + 0.18 * (FLOW_LEVEL[d.bleed.flow] || 2)).toFixed(2) + ")" : null);
+
+      // En rad per skattning.
+      MOOD_METRICS.forEach((m) => {
+        html += stripRowHTML(m.label, "", days, (d) => {
+          const v = d.mood && d.mood.scores ? d.mood.scores[m.id] : null;
+          return v != null ? tone(heaviness(m, v)) : null;
+        });
+      });
+      html += stripRowHTML("Sömntimmar", "", days, (d) =>
+        d.mood && d.mood.sleepHours != null ? tone(sleepHeaviness(d.mood.sleepHours)) : null);
+
+      html += '<div class="pt-axis"><span>' + fmtShort(days[0].date) + "</span><span>" +
+              fmtShort(days[days.length - 1].date) + "</span></div>";
+      html += '<div class="pt-legend"><span>Lättare</span>' +
+              [1, 2, 3, 4, 5].map((l) => '<i style="background:' + tone(l) + '"></i>').join("") +
+              "<span>Tyngre</span></div>";
+      html += '<div class="pt-legend"><i style="background:rgba(122,150,136,1)"></i>' +
+              "<span>Medicin tagen</span>" +
+              '<i style="background:rgba(122,150,136,0.3);margin-left:8px"></i><span>Omgång pågår</span>' +
+              '<i style="box-shadow:inset 0 0 0 1px var(--line);margin-left:8px"></i><span>Ej loggat</span></div>';
+      return html + "</div>";
+    }
+
+    // Kort med den valda dagens innehåll.
+    function buildDayDetail(day) {
+      if (!day) return "";
+      const d = new Date(day.date + "T00:00:00");
+      const weekday = new Intl.DateTimeFormat("sv-SE", { weekday: "long" }).format(d);
+      let html = '<div class="card"><strong>' +
+        weekday.charAt(0).toUpperCase() + weekday.slice(1) + " " + fmtLong(day.date) + "</strong>";
+
+      const rows = [];
+      const scores = (day.mood && day.mood.scores) || {};
+      MOOD_METRICS.forEach((m) => {
+        if (scores[m.id] != null)
+          rows.push([m.label, EMOJI[m.scale][scores[m.id] - 1] + " " + scores[m.id] + " av 5"]);
+      });
+      if (day.mood && day.mood.sleepHours != null)
+        rows.push(["Sömn", fmtHours(day.mood.sleepHours) + " tim"]);
+      if (day.bleed)
+        rows.push(["Blödning", bleedTypeLabel(day.bleed.type) + ", " +
+                   bleedFlowLabel(day.bleed.flow).toLowerCase()]);
+      if (day.med) rows.push(["Medicin", (day.med.dos ? day.med.dos + " mg" : "tagen")]);
+      else if (day.inCourse) rows.push(["Medicin", "omgång pågår, ej bockad"]);
+
+      if (!rows.length) {
+        html += '<p class="hint" style="margin-top:6px">Inget loggat den här dagen.</p>';
+      } else {
+        html += '<ul class="day-detail-list">' + rows.map((r) =>
+          "<li><span>" + escapeHTML(r[0]) + "</span><span>" + escapeHTML(r[1]) + "</span></li>"
+        ).join("") + "</ul>";
+      }
+      if (day.mood && day.mood.note)
+        html += '<div class="bleed-day-note">' + escapeHTML(day.mood.note) + "</div>";
+      html += '<button type="button" class="btn secondary" data-act="open-day">' +
+              (day.mood ? "Öppna dagen i Mående" : "Logga den här dagen") + "</button>";
+      return html + "</div>";
+    }
+
+    /* --- Enkla jämförelser ("mönster hittills") ---
+       Räknas på ALL loggad data. Visas först vid ~30 loggade dagar, och varje
+       jämförelse kräver minst 5 dagar i varje grupp. Formuleras försiktigt:
+       det här visar samband i loggningen, inte orsak. */
+    const MIN_DAYS_FOR_PATTERNS = 30;
+    const MIN_GROUP = 5;
+
+    function compareLine(label, a, b) {
+      if (a.values.length < MIN_GROUP || b.values.length < MIN_GROUP) return "";
+      return '<div class="stat-row"><span>' + label + "<br>" +
+        '<span class="hint">' + a.name + " (" + a.values.length + " dagar) · " +
+        b.name + " (" + b.values.length + " dagar)</span></span>" +
+        '<span class="stat-val">' + fmtAvg(avg(a.values)) + " · " +
+        fmtAvg(avg(b.values)) + "</span></div>";
+    }
+
+    function buildComparisons(mood, bleeding) {
+      let html = '<div class="card"><div class="status-eyebrow" ' +
+                 'style="color:var(--muted)">Mönster hittills</div>';
+      if (mood.length < MIN_DAYS_FOR_PATTERNS) {
+        return html + '<p class="hint" style="margin-top:8px">När du har loggat ungefär ' +
+          MIN_DAYS_FOR_PATTERNS + " dagar visas enkla jämförelser här. Hittills: " +
+          dagar(mood.length) + ".</p></div>";
+      }
+      const sc = (m, id) => (m.scores && m.scores[id] != null ? m.scores[id] : null);
+      const pick = (list, id) => list.map((m) => sc(m, id)).filter((v) => v != null);
+
+      let lines = "";
+      // 1) Sömn och humör samma dag (sömnen gäller natten före).
+      const withSleep = mood.filter((m) => m.sleepHours != null);
+      lines += compareLine("Humör efter kort respektive lång sömn",
+        { name: "under 6 tim", values: pick(withSleep.filter((m) => m.sleepHours < 6), "humor") },
+        { name: "7 tim eller mer", values: pick(withSleep.filter((m) => m.sleepHours >= 7), "humor") });
+      // 2) Mage och stress.
+      lines += compareLine("Magbesvär vid hög respektive låg stress",
+        { name: "stress 4–5", values: pick(mood.filter((m) => sc(m, "stress") >= 4), "magbesvar") },
+        { name: "stress 1–2", values: pick(mood.filter((m) => sc(m, "stress") != null && sc(m, "stress") <= 2), "magbesvar") });
+      // 3) Humör på blödningsdagar jämfört med övriga dagar.
+      const bleedDates = new Set(bleeding.map((b) => b.date));
+      lines += compareLine("Humör på blödningsdagar respektive övriga dagar",
+        { name: "blödning", values: pick(mood.filter((m) => bleedDates.has(m.date)), "humor") },
+        { name: "övriga", values: pick(mood.filter((m) => !bleedDates.has(m.date)), "humor") });
+
+      html += lines || '<p class="hint" style="margin-top:8px">Det behövs fler ' +
+        "dagar med sömn, stress eller blödning loggat för att jämföra.</p>";
+      html += '<p class="hint" style="margin-top:12px">Snittvärden på skalan 1–5. ' +
+              "Det här visar samband i din loggning, inte vad som orsakar vad.</p>";
+      return html + "</div>";
+    }
+
+    // Fyll läkarrapporten (en rad per dag) och öppna utskriftsdialogen.
+    function printReport(days) {
+      const head = "<tr><th>Datum</th>" +
+        MOOD_METRICS.map((m) => "<th>" + METRIC_SHORT[m.id] + "</th>").join("") +
+        "<th>Sömn (tim)</th><th>Blödning</th><th>Medicin (mg)</th></tr>";
+      const body = days.map((d) => {
+        const scores = (d.mood && d.mood.scores) || {};
+        return "<tr><td>" + d.date + "</td>" +
+          MOOD_METRICS.map((m) => "<td>" + (scores[m.id] != null ? scores[m.id] : "") + "</td>").join("") +
+          "<td>" + (d.mood && d.mood.sleepHours != null ? fmtHours(d.mood.sleepHours) : "") + "</td>" +
+          "<td>" + (d.bleed ? escapeHTML(bleedFlowLabel(d.bleed.flow)) : "") + "</td>" +
+          "<td>" + (d.med ? (d.med.dos || "x") : "") + "</td></tr>";
+      }).join("");
+      const logged = days.filter((d) => d.mood).length;
+
+      document.getElementById("print-report").innerHTML =
+        "<h1>Symtomdagbok " + fmtLong(days[0].date) + " – " +
+        fmtLong(days[days.length - 1].date) + "</h1>" +
+        "<p>Daglig egen skattning, skala 1–5. Humör, Energi och Sömnkvalitet: " +
+        "5 = bra. Övriga: 5 = mycket. Tom ruta = inte loggat. Loggat " + logged +
+        " av " + days.length + " dagar.</p>" +
+        "<table><thead>" + head + "</thead><tbody>" + body + "</tbody></table>";
+      window.print();
+    }
+
+    let _monsterDays = [];  // senast visade dagar (för klick och rapport)
+
+    async function renderMonster() {
+      const [mood, bleeding, meds, courses] = await Promise.all([
+        getAll("mood"), getAll("bleeding"), getAll("medication"), getAll("courses"),
+      ]);
+      _monsterDays = collectDays(monsterDays, mood, bleeding, meds, courses);
+      const selected = _monsterDays.find((d) => d.date === monsterSelected) || null;
+
+      monsterContent.innerHTML =
+        buildTimeline(_monsterDays) +
+        buildDayDetail(selected) +
+        buildComparisons(mood, bleeding) +
+        '<div class="card"><strong>Till läkarbesöket</strong>' +
+        '<p class="hint" style="margin-top:6px">En tabell med varje dag i den ' +
+        "valda perioden, att skriva ut eller spara som PDF.</p>" +
+        '<button type="button" class="btn" data-act="print">Skriv ut ' +
+        monsterDays + " dagar</button></div>";
+    }
+
+    monsterContent.addEventListener("click", async (e) => {
+      const period = e.target.closest("[data-days]");
+      if (period) {
+        monsterDays = Number(period.dataset.days);
+        await renderMonster();
+        return;
+      }
+      const cell = e.target.closest(".pt-cell");
+      if (cell) {
+        monsterSelected = monsterSelected === cell.dataset.date ? null : cell.dataset.date;
+        await renderMonster();
+        return;
+      }
+      const actEl = e.target.closest("[data-act]");
+      if (!actEl) return;
+      if (actEl.dataset.act === "print") printReport(_monsterDays);
+      if (actEl.dataset.act === "open-day" && monsterSelected) {
+        await loadMoodForDate(monsterSelected);
+        showView("maende", "Mående");
+      }
+    });
+
+    /* ======================================================================
        d) SERVICE WORKER – registrering (offline-stöd)
           OBS: aktiveras bara i säker kontext (https eller localhost).
        =================================================================== */
@@ -2524,6 +2882,7 @@
       if (currentView === "idag" && !supportEditing) renderIdag();
       if (currentView === "medicin") renderMedicin();
       if (currentView === "blodningar") renderBleeding();
+      if (currentView === "monster") renderMonster();
     }
 
     // Be om en synk strax (samlar ihop flera sparningar till en körning).

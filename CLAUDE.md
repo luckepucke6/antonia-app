@@ -53,7 +53,9 @@ sections:
 
 There is a fourth store, `courses` (`keyPath: "omgangId"`), for medication
 courses. Later sections in the script: (e) Mående, (f) Medicin, (g) Blödningar,
-(h) Idag, (i) Sync.
+(h) Idag (incl. the support card for heavy periods), (i) Sync, (j) Mönster
+(timeline per day, simple comparisons, printable report). There is also a fifth
+store, `notes` (`keyPath: "key"`). Settings is opened from the gear in the header.
 
 ## Sync (section i)
 
