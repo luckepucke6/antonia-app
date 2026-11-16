@@ -466,6 +466,32 @@
       color: var(--muted);
     }
 
+    /* Snabbval-taggar i Mående (flera kan väljas). */
+    .tag-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .tag-opt {
+      min-height: 40px;
+      padding: 8px 14px;
+      font: inherit;
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: var(--text);
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .tag-opt.selected {
+      color: #fff;
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
     /* Stora primärknappen "Jag tog den idag" */
     .btn.big { padding: 17px 16px; font-size: 1.08rem; }
     .btn:disabled { opacity: 0.55; cursor: default; }
@@ -659,6 +685,11 @@
       cursor: pointer;
     }
     .pt-cell.sel { box-shadow: 0 0 0 1.5px var(--text); position: relative; z-index: 1; }
+    /* Många dagar (180): rutorna blir för smala för egna ramar, så hela
+       raden får en ram och rutorna ligger kant i kant. */
+    .pt-strip.dense { gap: 0; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--line); }
+    .pt-strip.dense .pt-cell { border-radius: 0; box-shadow: none; }
+    .pt-strip.dense .pt-cell.sel { box-shadow: 0 0 0 1.5px var(--text); }
     .pt-axis {
       display: flex;
       justify-content: space-between;
@@ -856,6 +887,12 @@
         <button class="nav-btn" id="mood-next" aria-label="Nästa dag">›</button>
       </div>
 
+      <!-- Visas bara för dagar som lagts in i efterhand från anteckningar. -->
+      <p class="hint" id="mood-estimated" hidden
+         style="text-align:center;margin:0 0 10px;">
+        Uppskattat från dina anteckningar. Ändra och spara om det inte stämmer.
+      </p>
+
       <!-- KÄNSLOR – skattningsraderna genereras av JS -->
       <div class="card">
         <p class="group-title" style="margin-top:0;">Känslor</p>
@@ -882,6 +919,12 @@
           </div>
         </div>
         <div id="metrics-somn"></div>
+      </div>
+
+      <!-- SNABBVAL: taggar för sådant som inte passar en skala (JS fyller i) -->
+      <div class="card">
+        <p class="group-title" style="margin-top:0;">Snabbval</p>
+        <div class="tag-group" id="mood-tags"></div>
       </div>
 
       <!-- ÖVRIGT: valfri fritext -->
@@ -981,6 +1024,8 @@
         <button class="btn" id="btn-export">⬇️ Exportera all data (JSON)</button>
         <button class="btn secondary" id="btn-import">⬆️ Importera från fil</button>
         <input type="file" id="import-file" accept="application/json,.json" hidden />
+        <button class="btn secondary" id="btn-merge">➕ Lägg till från fil (behåller det du har)</button>
+        <input type="file" id="merge-file" accept="application/json,.json" hidden />
         <p class="hint" id="settings-status" aria-live="polite"></p>
       </div>
     </section>
@@ -1262,6 +1307,84 @@
       });
     }
 
+    // LÄGG TILL innehållet i en fil utan att röra det som redan finns, i EN
+    // transaktion. Det lokala vinner alltid: en dag, omgång eller anteckning
+    // som redan finns hoppas över. Returnerar antal tillagda poster per store.
+    async function mergeAll(data) {
+      const db = await openDB();
+      const now = new Date().toISOString();
+      const added = {};
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORES, "readwrite");
+        let failure = null;
+        tx.oncomplete = () => resolve(added);
+        tx.onerror = () => reject(failure || tx.error);
+        tx.onabort = () => reject(failure || tx.error);
+
+        const existing = {};
+        let pending = STORES.length;
+        STORES.forEach((store) => {
+          const req = tx.objectStore(store).getAll();
+          req.onsuccess = () => {
+            existing[store] = req.result;
+            if (--pending === 0) {
+              try { apply(); } catch (err) { failure = err; tx.abort(); }
+            }
+          };
+        });
+
+        function apply() {
+          const live = (store) => existing[store].filter((r) => !r.deletedAt);
+          const put = (store, src) => {
+            const rec = { ...src, updatedAt: now, dirty: 1 };
+            delete rec.deletedAt;
+            if (UID_STORES.includes(store)) {
+              delete rec.id;            // löpnumret hör till den andra enheten
+              if (!rec.uid) rec.uid = newUid();
+            }
+            tx.objectStore(store).put(rec);
+            added[store] = (added[store] || 0) + 1;
+          };
+          const incoming = (store) => (Array.isArray(data[store]) ? data[store] : []);
+
+          // mood + notes: en post per nyckel, befintlig post behålls.
+          ["mood", "notes"].forEach((store) => {
+            const have = new Set(live(store).map((r) => syncKey(store, r)));
+            incoming(store).forEach((r) => {
+              if (!have.has(syncKey(store, r))) put(store, r);
+            });
+          });
+
+          // courses: hoppa över en omgång som redan finns (samma id eller
+          // samma startdatum), och en pågående om en redan pågår lokalt.
+          const courses = live("courses");
+          const skipped = new Set();
+          incoming("courses").forEach((c) => {
+            const dup = courses.some((x) =>
+              x.omgangId === c.omgangId || x.startdatum === c.startdatum);
+            if (dup || (c.active && courses.some((x) => x.active))) {
+              skipped.add(c.omgangId);
+              return;
+            }
+            put("courses", c);
+          });
+
+          // medication + bleeding: en post per dag räcker, och dagar som hör
+          // till en överhoppad omgång följer inte med.
+          ["medication", "bleeding"].forEach((store) => {
+            const uids = new Set(live(store).map((r) => r.uid));
+            const dates = new Set(live(store).map((r) => r.date));
+            incoming(store).forEach((r) => {
+              if (store === "medication" && skipped.has(r.omgangId)) return;
+              if ((r.uid && uids.has(r.uid)) || dates.has(r.date)) return;
+              dates.add(r.date);
+              put(store, r);
+            });
+          });
+        }
+      });
+    }
+
     // Gör hjälparna nåbara i konsolen så du lätt kan testa medan du bygger.
     window.db = { openDB, addRecord, getRecord, getAll, clearStore, deleteRecord, STORES };
 
@@ -1365,8 +1488,51 @@
       }
     }
 
+    // Lägg till innehållet i en fil till det som redan finns (inget ersätts).
+    async function mergeData(file) {
+      try {
+        const data = JSON.parse(await file.text());
+        if (!STORES.some((s) => Array.isArray(data[s]))) {
+          setStatus("Filen ser inte ut att vara en giltig backup.");
+          return;
+        }
+        const ok = confirm(
+          "Det här lägger till innehållet i filen. Det du redan har loggat " +
+          "ändras inte. Fortsätta?"
+        );
+        if (!ok) { setStatus("Avbrutet."); return; }
+
+        const added = await mergeAll(data);
+        scheduleSync();
+        refreshCurrentView();
+        loadMoodForDate(moodDate);
+
+        const parts = [];
+        if (added.mood) parts.push(dagar(added.mood) + " mående");
+        if (added.courses) parts.push(added.courses + (added.courses === 1 ? " omgång" : " omgångar"));
+        if (added.medication) parts.push(added.medication + " medicindagar");
+        if (added.bleeding) parts.push(added.bleeding + " blödningsdagar");
+        if (added.notes) parts.push(added.notes + (added.notes === 1 ? " anteckning" : " anteckningar"));
+        setStatus(parts.length
+          ? "Tillagt: " + parts.join(", ") + "."
+          : "Inget nytt att lägga till – allt i filen fanns redan.");
+      } catch (err) {
+        console.error(err);
+        setStatus("Något gick fel: " + err.message);
+      }
+    }
+
     document.getElementById("btn-export")
       .addEventListener("click", exportData);
+
+    const mergeInput = document.getElementById("merge-file");
+    document.getElementById("btn-merge")
+      .addEventListener("click", () => mergeInput.click());
+    mergeInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (file) mergeData(file);
+      mergeInput.value = "";
+    });
 
     const importInput = document.getElementById("import-file");
     document.getElementById("btn-import")
@@ -1386,7 +1552,8 @@
     // Två emoji-skalor beroende på metrikens riktning:
     //   valence   – högt = bra  (😢 … 😄)
     //   intensity – högt = mer/sämre (😌 lugn … 😣 överväldigad)
-    // Höger ansikte betyder alltid "mer/intensivare" och matchar etiketten.
+    // I Mående-vyn ritas intensity-skalor spegelvänt (se buildMetricRows), så
+    // att det positiva alltid hamnar till höger.
     const EMOJI = {
       valence:   ["😢", "😕", "😐", "🙂", "😄"],
       intensity: ["😌", "🙂", "😐", "😟", "😣"],
@@ -1399,6 +1566,7 @@
       { id: "humor",         group: "kanslor", label: "Humör",                 scale: "valence",   low: "dåligt", high: "bra" },
       { id: "irritabilitet", group: "kanslor", label: "Irritabilitet",         scale: "intensity", low: "lite",   high: "mycket" },
       { id: "angest",        group: "kanslor", label: "Ångest / oro",          scale: "intensity", low: "lite",   high: "mycket" },
+      { id: "sjalvkritik",   group: "kanslor", label: "Självkritik",           scale: "intensity", low: "lite",   high: "mycket" },
       { id: "kanslighet",    group: "kanslor", label: "Känslighet",            scale: "intensity", low: "lite",   high: "mycket" },
       { id: "intensitet",    group: "kanslor", label: "Intensitet på känslor", scale: "intensity", low: "lite",   high: "mycket" },
       { id: "delusion",      group: "kanslor", label: "Grad av delusion",      scale: "intensity", low: "ingen",  high: "stark" },
@@ -1410,9 +1578,31 @@
       { id: "sleepQuality",  group: "somn",    label: "Hur du sov",            scale: "valence",   low: "dåligt", high: "bra" },
     ];
 
+    // Snabbval: sådant som antingen hände eller inte, utan skala. Sparas som
+    // en lista med id:n i postens "tags". id:t är det som lagras – byt inte.
+    const MOOD_TAGS = [
+      { id: "grat",             label: "Gråt" },
+      { id: "overtankande",     label: "Övertänkande" },
+      { id: "humorsvangningar", label: "Humörsvängningar" },
+      { id: "konflikt",         label: "Konfliktsökande" },
+      { id: "kanslokall",       label: "Känslokall" },
+      { id: "panikangest",      label: "Panikångest" },
+      { id: "livskris",         label: "Livskris" },
+      { id: "svullen",          label: "Svullen" },
+      { id: "forstoppad",       label: "Förstoppad" },
+    ];
+    // Etiketter för en posts taggar (tål okända/äldre id:n).
+    function tagLabels(rec) {
+      return ((rec && rec.tags) || []).map((id) => {
+        const t = MOOD_TAGS.find((x) => x.id === id);
+        return t ? t.label : id;
+      });
+    }
+
     // --- State för den dag som visas ---
     let moodDate = todayISO();   // YYYY-MM-DD
     let selections = {};         // { metrikId: 1..5 } – bara ifyllda
+    let selectedTags = new Set(); // valda snabbval (tagg-id:n)
 
     // Lägg till n dagar på en YYYY-MM-DD-sträng och returnera ny sträng.
     function shiftDate(iso, days) {
@@ -1430,20 +1620,40 @@
       };
 
       MOOD_METRICS.forEach((m) => {
-        const faces = EMOJI[m.scale]
-          .map((emoji, i) =>
-            `<button class="face" type="button" data-id="${m.id}" ` +
-            `data-value="${i + 1}" aria-label="${i + 1} av 5">${emoji}</button>`)
-          .join("");
+        // Det positiva ska alltid ligga till höger. För intensity-skalor
+        // (högt värde = mer besvär) visas därför ansiktena i omvänd ordning.
+        // Bara visningen vänds – det sparade värdet 1–5 betyder samma som förr.
+        const flip = m.scale === "intensity";
+        let faceList = EMOJI[m.scale].map((emoji, i) =>
+          `<button class="face" type="button" data-id="${m.id}" ` +
+          `data-value="${i + 1}" aria-label="${i + 1} av 5">${emoji}</button>`);
+        if (flip) faceList = faceList.reverse();
+        const faces = faceList.join("");
+        const leftEnd = flip ? m.high : m.low;
+        const rightEnd = flip ? m.low : m.high;
 
         const row = document.createElement("div");
         row.className = "metric";
         row.innerHTML =
           `<div class="metric-label">${m.label}</div>` +
           `<div class="faces">${faces}</div>` +
-          `<div class="scale-ends"><span>${m.low}</span><span>${m.high}</span></div>`;
+          `<div class="scale-ends"><span>${leftEnd}</span><span>${rightEnd}</span></div>`;
 
         containers[m.group].appendChild(row);
+      });
+
+      // Snabbval-taggar: tryck för att slå på/av.
+      const tagsEl = document.getElementById("mood-tags");
+      tagsEl.innerHTML = MOOD_TAGS.map((t) =>
+        `<button class="tag-opt" type="button" data-tag="${t.id}" ` +
+        `aria-pressed="false">${t.label}</button>`).join("");
+      tagsEl.addEventListener("click", (e) => {
+        const btn = e.target.closest(".tag-opt");
+        if (!btn) return;
+        const id = btn.dataset.tag;
+        if (selectedTags.has(id)) selectedTags.delete(id);
+        else selectedTags.add(id);
+        renderTags();
       });
 
       // Event-delegation: ett klick på ett ansikte väljer (eller avmarkerar).
@@ -1470,9 +1680,19 @@
       });
     }
 
+    function renderTags() {
+      document.querySelectorAll("#mood-tags .tag-opt").forEach((btn) => {
+        const on = selectedTags.has(btn.dataset.tag);
+        btn.classList.toggle("selected", on);
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+    }
+
     // Spegla hela state (alla metriker + sömntimmar + fritext) till DOM.
     function renderSelections(rec) {
       MOOD_METRICS.forEach((m) => renderMetric(m.id));
+      renderTags();
+      document.getElementById("mood-estimated").hidden = !(rec && rec.estimated);
       document.getElementById("sleep-hours").value =
         rec && rec.sleepHours != null ? rec.sleepHours : "";
       document.getElementById("mood-note").value = (rec && rec.note) || "";
@@ -1500,6 +1720,7 @@
       moodDate = dateISO;
       const rec = await getRecord("mood", dateISO);
       selections = rec && rec.scores ? { ...rec.scores } : {};
+      selectedTags = new Set((rec && rec.tags) || []);
       renderSelections(rec);
       renderDateNav();
     }
@@ -1519,7 +1740,10 @@
         if (!isNaN(h)) record.sleepHours = Math.min(14, Math.max(0, h));
       }
       if (note !== "") record.note = note;
+      if (selectedTags.size) record.tags = [...selectedTags];
 
+      // Sparar hon själv är dagen inte längre en uppskattning.
+      document.getElementById("mood-estimated").hidden = true;
       await addRecord("mood", record);
       showToast("Sparat ✓");
     }
@@ -1782,10 +2006,45 @@
       return html + "</div>";
     }
 
+    /* --- P-pillerkartor ---
+       En post per startad karta i "notes": { key: "ppiller:YYYY-MM-DD", date }.
+       (Ingen egen store behövs – notes synkas och följer med i backupen.) */
+    const PPILLER_PREFIX = "ppiller:";
+    // Startdatum för alla loggade kartor, äldst först.
+    async function getPillPackDates() {
+      return (await getAll("notes"))
+        .filter((n) => String(n.key).startsWith(PPILLER_PREFIX))
+        .map((n) => n.date || String(n.key).slice(PPILLER_PREFIX.length))
+        .sort();
+    }
+
+    function buildPillCard(packDates) {
+      const today = todayISO();
+      const last = packDates[packDates.length - 1];
+      let html = '<div class="card"><div class="status-eyebrow" ' +
+                 'style="color:var(--muted)">P-piller</div>';
+      if (!last) {
+        html += '<p class="status-sub" style="margin:8px 0 12px">Ingen karta ' +
+                "loggad ännu. Tryck när du börjar på en ny.</p>";
+      } else if (last === today) {
+        html += '<p class="status-sub" style="margin:8px 0 0">Ny karta startad idag ✓</p>' +
+                '<button type="button" class="text-btn" data-act="pill-undo">Ångra</button>';
+        return html + "</div>";
+      } else {
+        const days = Math.round(
+          (new Date(today + "T00:00:00") - new Date(last + "T00:00:00")) / 864e5);
+        html += '<p class="status-sub" style="margin:8px 0 12px">Senaste kartan ' +
+                "startade " + fmtLong(last) + " (" + dagar(days) + " sedan).</p>";
+      }
+      html += '<button type="button" class="btn secondary" data-act="pill-start">' +
+              "Ny karta startad idag</button>";
+      return html + "</div>";
+    }
+
     // Bygg om hela Medicin-vyn från databasen. Anropas vid visning + efter åtgärd.
     async function renderMedicin() {
-      const [courses, meds] = await Promise.all([
-        getAll("courses"), getAll("medication"),
+      const [courses, meds, packDates] = await Promise.all([
+        getAll("courses"), getAll("medication"), getPillPackDates(),
       ]);
       const active = courses.find((c) => c.active) || null;
 
@@ -1807,6 +2066,7 @@
       html += buildStatus(active, activeDays);
       if (!active) html += buildStats(courses, daysByCourse);
       html += buildHistory(courses, daysByCourse);
+      html += buildPillCard(packDates);
 
       medicinContent.innerHTML = html;
     }
@@ -1899,6 +2159,15 @@
         case "backdate": await backdateDay(); break;
         case "end":      await endCourse(); break;
         case "del-day":  await deleteDay(actEl.dataset.id); break;
+        case "pill-start":
+          await addRecord("notes", { key: PPILLER_PREFIX + todayISO(), date: todayISO() });
+          showToast("Ny karta loggad ✓");
+          await renderMedicin();
+          break;
+        case "pill-undo":
+          await deleteRecord("notes", PPILLER_PREFIX + todayISO());
+          await renderMedicin();
+          break;
         case "toggle":
           expandedCourse =
             expandedCourse === actEl.dataset.course ? null : actEl.dataset.course;
@@ -2305,7 +2574,8 @@
     function buildIdagMood(moodRec) {
       const scores = (moodRec && moodRec.scores) || {};
       const loggat = Object.keys(scores).length > 0 ||
-        (moodRec && (moodRec.sleepHours != null || moodRec.note));
+        (moodRec && (moodRec.sleepHours != null || moodRec.note ||
+                     (moodRec.tags && moodRec.tags.length)));
 
       let html = '<div class="card">';
       html += '<div class="status-eyebrow">Dagens mående</div>';
@@ -2386,11 +2656,13 @@
         ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]));
     }
 
-    // En "tung dag": lågt humör eller hög ångest/oro (bara ifyllda värden).
+    // En "tung dag": lågt humör, hög ångest/oro eller stark självkritik
+    // (bara ifyllda värden).
     function isHeavyDay(rec) {
       const s = (rec && rec.scores) || {};
       return (s.humor != null && s.humor <= 2) ||
-             (s.angest != null && s.angest >= 4);
+             (s.angest != null && s.angest >= 4) ||
+             (s.sjalvkritik != null && s.sjalvkritik >= 4);
     }
 
     // Tyngre period: idag är tung, eller minst två av de tre senaste dagarna.
@@ -2486,15 +2758,36 @@
       return html + "</div>";
     }
 
+    // Undvik-listan: hennes egen text om sådant hon vill undvika (t.ex. mat
+    // som ger magont). Sparas i "notes" under nyckeln "avoid".
+    let avoidEditing = false;
+    function buildAvoid(text) {
+      if (avoidEditing) {
+        return '<div class="card"><div class="status-eyebrow">Undvik</div>' +
+          '<textarea class="note" id="avoid-text" rows="4" placeholder="' +
+          'Till exempel: äpple (ont i magen) …">' + escapeHTML(text) + "</textarea>" +
+          '<button type="button" class="btn" data-act="avoid-save">Spara</button></div>';
+      }
+      if (!text) {
+        return '<button type="button" class="card-link" data-act="avoid-edit">' +
+          "<span>🚫 Skriv en undvik-lista</span>" +
+          '<span class="card-link-arrow">›</span></button>';
+      }
+      return '<div class="card"><div class="status-eyebrow">Undvik</div>' +
+        '<div class="support-own">' + escapeHTML(text) + "</div>" +
+        '<button type="button" class="text-btn" data-act="avoid-edit">Ändra</button></div>';
+    }
+
     // Bygg om hela Idag-vyn från databasen.
     async function renderIdag() {
       const today = todayISO();
-      const [moodRec, courses, meds, bleed, mood1, mood2, helps] = await Promise.all([
+      const [moodRec, courses, meds, bleed, mood1, mood2, helps, avoid] = await Promise.all([
         getRecord("mood", today), getAll("courses"),
         getAll("medication"), getAll("bleeding"),
         getRecord("mood", shiftDate(today, -1)),
         getRecord("mood", shiftDate(today, -2)),
         getRecord("notes", "helps"),
+        getRecord("notes", "avoid"),
       ]);
       const recentMood = [moodRec, mood1, mood2];
 
@@ -2511,6 +2804,7 @@
       html += buildIdagMood(moodRec);
       html += buildIdagMed(courses, meds, today);
       html += buildIdagBleed(bleed, today);
+      html += buildAvoid((avoid && avoid.text) || "");
       if (!supportFirst) html += support;
 
       idagContent.innerHTML = html;
@@ -2558,6 +2852,18 @@
         case "support-med":
           showView("medicin", "Medicin");
           break;
+        case "avoid-edit":
+          avoidEditing = true;
+          await renderIdag();
+          break;
+        case "avoid-save": {
+          const text = document.getElementById("avoid-text").value.trim();
+          await addRecord("notes", { key: "avoid", text });
+          avoidEditing = false;
+          showToast("Sparat ✓");
+          await renderIdag();
+          break;
+        }
       }
     });
 
@@ -2574,13 +2880,14 @@
        Inga prognoser och inga diagnoser – bara det som faktiskt loggats.
        =================================================================== */
     const monsterContent = document.getElementById("monster-content");
-    const MONSTER_PERIODS = [30, 90];
+    const MONSTER_PERIODS = [30, 90, 180];
     let monsterDays = 30;        // hur många dagar bakåt som visas
     let monsterSelected = null;  // vald dag (YYYY-MM-DD) eller null
 
     // Kortnamn till rapportens kolumner.
     const METRIC_SHORT = {
       humor: "Humör", irritabilitet: "Irrit.", angest: "Ångest",
+      sjalvkritik: "Självkr.",
       kanslighet: "Känsl.", intensitet: "Intens.", delusion: "Delus.",
       energi: "Energi", magbesvar: "Mage", stress: "Stress",
       sleepQuality: "Sömnkv.",
@@ -2603,7 +2910,8 @@
     function avg(list) { return list.reduce((a, b) => a + b, 0) / list.length; }
 
     // Samla allt per datum för de senaste n dagarna (äldst först).
-    function collectDays(n, mood, bleeding, meds, courses) {
+    function collectDays(n, mood, bleeding, meds, courses, packDates) {
+      const packs = new Set(packDates || []);
       const today = todayISO();
       const moodBy = new Map(mood.map((m) => [m.date, m]));
       const bleedBy = new Map(bleeding.map((b) => [b.date, b]));
@@ -2616,6 +2924,7 @@
           mood: moodBy.get(date) || null,
           bleed: bleedBy.get(date) || null,
           med: medBy.get(date) || null,
+          pill: packs.has(date),
           inCourse: courses.some((c) =>
             date >= c.startdatum && date <= (c.slutdatum || today)),
         });
@@ -2633,7 +2942,8 @@
       }).join("");
       return '<div class="pt-row"><div class="pt-label"><span>' + label +
         "</span><span>" + (right || "") + "</span></div>" +
-        '<div class="pt-strip" style="grid-template-columns:repeat(' +
+        '<div class="pt-strip' + (days.length > 90 ? " dense" : "") +
+        '" style="grid-template-columns:repeat(' +
         days.length + ',1fr)">' + cells + "</div></div>";
     }
     const tone = (level) => "rgba(176,96,112," + (level / 5).toFixed(2) + ")";
@@ -2655,6 +2965,9 @@
       html += stripRowHTML("Blödning", "", days, (d) =>
         d.bleed ? "rgba(180,80,94," + (0.25 + 0.18 * (FLOW_LEVEL[d.bleed.flow] || 2)).toFixed(2) + ")" : null);
 
+      html += stripRowHTML("Ny p-pillerkarta", "", days, (d) =>
+        d.pill ? "rgba(108,122,168,1)" : null);
+
       // En rad per skattning.
       MOOD_METRICS.forEach((m) => {
         html += stripRowHTML(m.label, "", days, (d) => {
@@ -2664,6 +2977,12 @@
       });
       html += stripRowHTML("Sömntimmar", "", days, (d) =>
         d.mood && d.mood.sleepHours != null ? tone(sleepHeaviness(d.mood.sleepHours)) : null);
+
+      // Snabbval: mörkare ruta ju fler taggar den dagen.
+      html += stripRowHTML("Snabbval", "", days, (d) => {
+        const n = d.mood && d.mood.tags ? d.mood.tags.length : 0;
+        return n ? tone(Math.min(5, n + 1)) : null;
+      });
 
       html += '<div class="pt-axis"><span>' + fmtShort(days[0].date) + "</span><span>" +
               fmtShort(days[days.length - 1].date) + "</span></div>";
@@ -2696,8 +3015,11 @@
       if (day.bleed)
         rows.push(["Blödning", bleedTypeLabel(day.bleed.type) + ", " +
                    bleedFlowLabel(day.bleed.flow).toLowerCase()]);
+      const tags = tagLabels(day.mood);
+      if (tags.length) rows.push(["Snabbval", tags.join(", ")]);
       if (day.med) rows.push(["Medicin", (day.med.dos ? day.med.dos + " mg" : "tagen")]);
       else if (day.inCourse) rows.push(["Medicin", "omgång pågår, ej bockad"]);
+      if (day.pill) rows.push(["P-piller", "ny karta startad"]);
 
       if (!rows.length) {
         html += '<p class="hint" style="margin-top:6px">Inget loggat den här dagen.</p>';
@@ -2708,6 +3030,9 @@
       }
       if (day.mood && day.mood.note)
         html += '<div class="bleed-day-note">' + escapeHTML(day.mood.note) + "</div>";
+      if (day.mood && day.mood.estimated)
+        html += '<p class="hint" style="margin-top:8px">Siffrorna är uppskattade ' +
+                "i efterhand från anteckningarna.</p>";
       html += '<button type="button" class="btn secondary" data-act="open-day">' +
               (day.mood ? "Öppna dagen i Mående" : "Logga den här dagen") + "</button>";
       return html + "</div>";
@@ -2767,14 +3092,17 @@
     function printReport(days) {
       const head = "<tr><th>Datum</th>" +
         MOOD_METRICS.map((m) => "<th>" + METRIC_SHORT[m.id] + "</th>").join("") +
-        "<th>Sömn (tim)</th><th>Blödning</th><th>Medicin (mg)</th></tr>";
+        "<th>Sömn (tim)</th><th>Blödning</th><th>Medicin (mg)</th><th>Övrigt</th></tr>";
       const body = days.map((d) => {
         const scores = (d.mood && d.mood.scores) || {};
-        return "<tr><td>" + d.date + "</td>" +
+        const extra = tagLabels(d.mood);
+        if (d.pill) extra.push("Ny p-pillerkarta");
+        return "<tr><td>" + d.date + (d.mood && d.mood.estimated ? "*" : "") + "</td>" +
           MOOD_METRICS.map((m) => "<td>" + (scores[m.id] != null ? scores[m.id] : "") + "</td>").join("") +
           "<td>" + (d.mood && d.mood.sleepHours != null ? fmtHours(d.mood.sleepHours) : "") + "</td>" +
           "<td>" + (d.bleed ? escapeHTML(bleedFlowLabel(d.bleed.flow)) : "") + "</td>" +
-          "<td>" + (d.med ? (d.med.dos || "x") : "") + "</td></tr>";
+          "<td>" + (d.med ? (d.med.dos || "x") : "") + "</td>" +
+          "<td>" + escapeHTML(extra.join(", ")) + "</td></tr>";
       }).join("");
       const logged = days.filter((d) => d.mood).length;
 
@@ -2783,7 +3111,9 @@
         fmtLong(days[days.length - 1].date) + "</h1>" +
         "<p>Daglig egen skattning, skala 1–5. Humör, Energi och Sömnkvalitet: " +
         "5 = bra. Övriga: 5 = mycket. Tom ruta = inte loggat. Loggat " + logged +
-        " av " + days.length + " dagar.</p>" +
+        " av " + days.length + " dagar." +
+        (days.some((d) => d.mood && d.mood.estimated)
+          ? " * = uppskattat i efterhand från egna anteckningar." : "") + "</p>" +
         "<table><thead>" + head + "</thead><tbody>" + body + "</tbody></table>";
       window.print();
     }
@@ -2791,16 +3121,18 @@
     let _monsterDays = [];  // senast visade dagar (för klick och rapport)
 
     async function renderMonster() {
-      const [mood, bleeding, meds, courses] = await Promise.all([
+      const [mood, bleeding, meds, courses, packDates] = await Promise.all([
         getAll("mood"), getAll("bleeding"), getAll("medication"), getAll("courses"),
+        getPillPackDates(),
       ]);
-      _monsterDays = collectDays(monsterDays, mood, bleeding, meds, courses);
+      _monsterDays = collectDays(monsterDays, mood, bleeding, meds, courses, packDates);
       const selected = _monsterDays.find((d) => d.date === monsterSelected) || null;
 
       monsterContent.innerHTML =
         buildTimeline(_monsterDays) +
         buildDayDetail(selected) +
-        buildComparisons(mood, bleeding) +
+        // Jämförelserna räknas bara på det hon själv har loggat.
+        buildComparisons(mood.filter((m) => !m.estimated), bleeding) +
         '<div class="card"><strong>Till läkarbesöket</strong>' +
         '<p class="hint" style="margin-top:6px">En tabell med varje dag i den ' +
         "valda perioden, att skriva ut eller spara som PDF.</p>" +
@@ -2879,7 +3211,7 @@
     // Mående-formuläret rörs inte här – där kan hon ha osparade val.
     function refreshCurrentView() {
       // Skriver hon i sin egen lista just nu får texten inte ritas över.
-      if (currentView === "idag" && !supportEditing) renderIdag();
+      if (currentView === "idag" && !supportEditing && !avoidEditing) renderIdag();
       if (currentView === "medicin") renderMedicin();
       if (currentView === "blodningar") renderBleeding();
       if (currentView === "monster") renderMonster();
