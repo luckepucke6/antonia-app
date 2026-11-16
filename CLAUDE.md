@@ -91,6 +91,33 @@ Things that live in existing stores rather than their own:
 - Dates: always use `todayISO()` / `isoFromDate()` (local time). Never
   `toISOString().slice(0, 10)` — it is UTC and gives the wrong day in Sweden.
 
+## Notifications, signal and partner mode
+
+Setup steps (VAPID keys, Edge Function, schedule) are in
+`supabase/NOTISER-UPPSATTNING.md`.
+
+- **Web Push**: Settings has a "Notiser" card. The constant `VAPID_PUBLIC_KEY`
+  in `index.html` is empty until push is set up (the card then says so); only
+  the public key may live in the repo. Subscriptions are upserted into the
+  `push_subscriptions` table (endpoint, p256dh, auth); logging out removes the
+  device's subscription. `sw.js` has `push` and `notificationclick` handlers;
+  the payload is JSON `{ title, body, view }`, and a click focuses the app and
+  posts `{type: "open-view", view}` (or opens `./#view`), handled by
+  `openViewByName`. On iPhone push only works from the home-screen app.
+- **Signal**: `notes` key `signal` = `{ date, dags, sakerhet, liknar, text,
+  text_partner }`, written server-side by the Edge Function
+  `supabase/functions/daglig-koll` and synced down like any note. Idag shows
+  the "Känner du igen det här?" card (`buildSignal`) when it is at most two
+  days old, no course is active and "Inte nu" has not been pressed
+  (`localStorage` `signal-dismissed`).
+- **Partner mode**: if the logged-in user is a `viewer` in `shares`,
+  `checkPartner()` fetches a limited overview via the RPC `partner_overview()`
+  (a level per day, medication days, courses, `text_partner`) — never notes,
+  tags or individual scores. Body class `partner` swaps the tab bar for one
+  "Översikt" tab (`view-partner`, `renderPartner`). Nothing goes into
+  IndexedDB; the overview is cached in `localStorage` (`partner-user`,
+  `partner-cache`) for offline use, and `sync()` is skipped while in partner mode.
+
 ## Critical gotchas
 
 - **Bump `CACHE_NAME` in `sw.js`** (`-v1` → `-v2` …) on *every* change to a

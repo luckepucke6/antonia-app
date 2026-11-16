@@ -41,8 +41,12 @@
     html, body {
       margin: 0;
       padding: 0;
-      height: 100%;
     }
+    html { height: 100%; }
+    /* min-height (inte height): annars hamnar bodys nederkants-utrymme mitt i
+       sidan när innehållet är längre än skärmen, och det sista på sidan går
+       inte att skrolla fram ovanför flik-raden. */
+    body { min-height: 100%; }
 
     body {
       background: var(--bg);
@@ -179,6 +183,8 @@
     .tab .icon { font-size: 1.2rem; line-height: 1; }
     /* Partnerläge (inloggad som den som får en översikt): bara Översikt-fliken,
        ingen loggning, ingen säkerhetskopiering. */
+    /* body har height:100%, så dess padding-bottom försvinner när innehållet är
+       längre än skärmen – lämna plats för flik-raden här i stället. */
     .tab.partner-only { display: none; }
     body.partner .tab { display: none; }
     body.partner .tab.partner-only { display: flex; }
