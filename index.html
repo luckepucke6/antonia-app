@@ -1386,7 +1386,8 @@
     // Två emoji-skalor beroende på metrikens riktning:
     //   valence   – högt = bra  (😢 … 😄)
     //   intensity – högt = mer/sämre (😌 lugn … 😣 överväldigad)
-    // Höger ansikte betyder alltid "mer/intensivare" och matchar etiketten.
+    // I Mående-vyn ritas intensity-skalor spegelvänt (se buildMetricRows), så
+    // att det positiva alltid hamnar till höger.
     const EMOJI = {
       valence:   ["😢", "😕", "😐", "🙂", "😄"],
       intensity: ["😌", "🙂", "😐", "😟", "😣"],
@@ -1430,18 +1431,24 @@
       };
 
       MOOD_METRICS.forEach((m) => {
-        const faces = EMOJI[m.scale]
-          .map((emoji, i) =>
-            `<button class="face" type="button" data-id="${m.id}" ` +
-            `data-value="${i + 1}" aria-label="${i + 1} av 5">${emoji}</button>`)
-          .join("");
+        // Det positiva ska alltid ligga till höger. För intensity-skalor
+        // (högt värde = mer besvär) visas därför ansiktena i omvänd ordning.
+        // Bara visningen vänds – det sparade värdet 1–5 betyder samma som förr.
+        const flip = m.scale === "intensity";
+        let faceList = EMOJI[m.scale].map((emoji, i) =>
+          `<button class="face" type="button" data-id="${m.id}" ` +
+          `data-value="${i + 1}" aria-label="${i + 1} av 5">${emoji}</button>`);
+        if (flip) faceList = faceList.reverse();
+        const faces = faceList.join("");
+        const leftEnd = flip ? m.high : m.low;
+        const rightEnd = flip ? m.low : m.high;
 
         const row = document.createElement("div");
         row.className = "metric";
         row.innerHTML =
           `<div class="metric-label">${m.label}</div>` +
           `<div class="faces">${faces}</div>` +
-          `<div class="scale-ends"><span>${m.low}</span><span>${m.high}</span></div>`;
+          `<div class="scale-ends"><span>${leftEnd}</span><span>${rightEnd}</span></div>`;
 
         containers[m.group].appendChild(row);
       });

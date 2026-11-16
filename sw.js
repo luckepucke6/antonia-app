@@ -8,7 +8,7 @@
  * av filerna nedan, annars fortsätter den gamla cachade versionen att serveras.
  */
 
-const CACHE_NAME = "antonia-dagbok-v11";
+const CACHE_NAME = "antonia-dagbok-v12";
 
 // Filer som ska finnas tillgängliga offline.
 const PRECACHE_URLS = [
