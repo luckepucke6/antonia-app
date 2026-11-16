@@ -40,7 +40,8 @@ nyare); i vanliga Safari kommer de inte fram.
    ```
 
    `SUPABASE_URL` och `SUPABASE_SERVICE_ROLE_KEY` finns redan i Edge-miljön.
-   Saknas någon hemlighet svarar funktionen 500 med vilka som saknas.
+   Saknas någon hemlighet svarar funktionen 500, och vilka som saknas står i
+   funktionens logg (inte i svaret).
 
 4. **Lägg ut funktionen med JWT-kontrollen avstängd**, eftersom den själv
    kontrollerar headern `x-cron-secret`:
