@@ -197,6 +197,17 @@ async function viewersOf(db: SupabaseClient, owner: string): Promise<string[]> {
   return (data ?? []).map((r) => r.viewer as string);
 }
 
+/**
+ * Konton som bara är partner (viewer i shares, aldrig owner). De kan ha egna
+ * rader i records, t.ex. från tester, men ska inte få hennes påminnelser.
+ */
+async function partnerOnly(db: SupabaseClient): Promise<Set<string>> {
+  const { data, error } = await db.from("shares").select("owner,viewer");
+  if (error) throw new Error("shares: " + error.message);
+  const owners = new Set((data ?? []).map((r) => r.owner as string));
+  return new Set((data ?? []).map((r) => r.viewer as string).filter((v) => !owners.has(v)));
+}
+
 // ---------------------------------------------------------------------------
 // Claude
 // ---------------------------------------------------------------------------
@@ -461,7 +472,8 @@ Deno.serve(async (req) => {
 
   let owners: string[];
   try {
-    owners = await listOwners(db);
+    const skip = await partnerOnly(db);
+    owners = (await listOwners(db)).filter((o) => !skip.has(o));
   } catch (e) {
     return json({ error: (e as Error).message }, 500);
   }
