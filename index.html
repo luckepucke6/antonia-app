@@ -177,6 +177,14 @@
       -webkit-tap-highlight-color: transparent;
     }
     .tab .icon { font-size: 1.2rem; line-height: 1; }
+    /* Partnerläge (inloggad som den som får en översikt): bara Översikt-fliken,
+       ingen loggning, ingen säkerhetskopiering. */
+    .tab.partner-only { display: none; }
+    body.partner .tab { display: none; }
+    body.partner .tab.partner-only { display: flex; }
+    body.partner #btn-sync-now,
+    body.partner #backup-card { display: none; }
+    .cal-day.static { cursor: default; }
     .tab.active { color: var(--accent); }
 
     /* ========================================================================
@@ -1048,6 +1056,11 @@
       <div id="monster-content"></div>
     </section>
 
+    <!-- Partnerläge: begränsad översikt för den som dagboken delas med. -->
+    <section id="view-partner" class="view">
+      <div id="partner-content"></div>
+    </section>
+
     <!-- 6. Inställningar (nås via kugghjulet) – synk + export/import -->
     <section id="view-installningar" class="view">
       <!-- Synk mot Supabase: inloggad = data sparas även i molnet. -->
@@ -1077,7 +1090,15 @@
         <p class="hint" id="sync-status" aria-live="polite"></p>
       </div>
 
+      <!-- Notiser (kräver inloggning och att appen ligger på hemskärmen). -->
       <div class="card">
+        <strong>Notiser</strong>
+        <p class="hint" style="margin-top:6px;" id="notis-status" aria-live="polite"></p>
+        <button class="btn" type="button" id="btn-notis-on" hidden>Slå på notiser</button>
+        <button class="btn secondary" type="button" id="btn-notis-off" hidden>Stäng av notiser på den här telefonen</button>
+      </div>
+
+      <div class="card" id="backup-card">
         <strong>Säkerhetskopiering</strong>
         <p class="hint" style="margin-top:6px;">
           Exportera då och då så har du en egen kopia av allt, oavsett vad som
@@ -1118,6 +1139,9 @@
     <button class="tab" data-view="monster" data-title="Mönster">
       <span class="icon">📈</span><span>Mönster</span>
     </button>
+    <button class="tab partner-only" data-view="partner" data-title="Översikt">
+      <span class="icon">💗</span><span>Översikt</span>
+    </button>
   </nav>
 
   <!-- Supabase-klienten (låst version 2.119.0, lokal fil så den fungerar offline) -->
@@ -1152,6 +1176,7 @@
       if (name === "medicin") renderMedicin();
       if (name === "blodningar") renderBleeding();
       if (name === "monster") renderMonster();
+      if (name === "partner") renderPartner();
     }
 
     // Kugghjulet i sidhuvudet öppnar Inställningar (ingen egen flik).
@@ -2820,6 +2845,29 @@
       return html + "</div>";
     }
 
+    /* --- "Känner du igen det här?" ---
+       Servern (Edge Function "daglig-koll") jämför varje kväll de senaste
+       dagarna med hur tidigare omgångar började och sparar resultatet i
+       "notes" under nyckeln "signal": { date, dags, sakerhet, liknar, text }.
+       Kortet visas om signalen är färsk, ingen omgång pågår och hon inte har
+       tryckt "Inte nu" för just den signalen. */
+    function buildSignal(sig, courses, today) {
+      if (!sig || !sig.dags || !sig.text) return "";
+      if (sig.date < shiftDate(today, -2)) return "";
+      if (courses.some((c) => c.active)) return "";
+      if (localStorage.getItem("signal-dismissed") === sig.date) return "";
+      let html = '<div class="card"><div class="support-title">Känner du igen det här? 💗</div>' +
+        '<p class="status-sub" style="margin:6px 0 0">' + escapeHTML(sig.text) + "</p>";
+      if (sig.liknar) {
+        html += '<button type="button" class="text-btn" data-act="signal-see" data-date="' +
+                escapeHTML(sig.liknar) + '">Se ' + fmtLong(sig.liknar) + " i Mönster</button>";
+      }
+      html += '<button type="button" class="btn" data-act="signal-start">Öppna Medicin</button>' +
+              '<button type="button" class="btn secondary" data-act="signal-dismiss" data-date="' +
+              escapeHTML(sig.date) + '">Inte nu</button>';
+      return html + "</div>";
+    }
+
     // Undvik-listan: hennes egen text om sådant hon vill undvika (t.ex. mat
     // som ger magont). Sparas i "notes" under nyckeln "avoid".
     let avoidEditing = false;
@@ -2843,13 +2891,14 @@
     // Bygg om hela Idag-vyn från databasen.
     async function renderIdag() {
       const today = todayISO();
-      const [moodRec, courses, meds, bleed, mood1, mood2, helps, avoid] = await Promise.all([
+      const [moodRec, courses, meds, bleed, mood1, mood2, helps, avoid, signal] = await Promise.all([
         getRecord("mood", today), getAll("courses"),
         getAll("medication"), getAll("bleeding"),
         getRecord("mood", shiftDate(today, -1)),
         getRecord("mood", shiftDate(today, -2)),
         getRecord("notes", "helps"),
         getRecord("notes", "avoid"),
+        getRecord("notes", "signal"),
       ]);
       const recentMood = [moodRec, mood1, mood2];
 
@@ -2862,6 +2911,7 @@
       const support = buildSupport(recentMood, (helps && helps.text) || "", today);
       // En tung dag hamnar stödet överst, annars som en diskret länk längst ner.
       const supportFirst = !support.startsWith("<button");
+      html += buildSignal(signal, courses, today);
       if (supportFirst) html += support;
       html += buildIdagMood(moodRec);
       html += buildIdagMed(courses, meds, today);
@@ -2913,6 +2963,18 @@
         }
         case "support-med":
           showView("medicin", "Medicin");
+          break;
+        case "signal-see":
+          monsterMonth = actEl.dataset.date.slice(0, 7);
+          monsterSelected = actEl.dataset.date;
+          showView("monster", "Mönster");
+          break;
+        case "signal-start":
+          showView("medicin", "Medicin");
+          break;
+        case "signal-dismiss":
+          localStorage.setItem("signal-dismissed", actEl.dataset.date);
+          await renderIdag();
           break;
         case "avoid-edit":
           avoidEditing = true;
@@ -3026,10 +3088,12 @@
 
     // Dela in en loggad dag: "tung" (snitt minst 3,5), "latt" (högst 2,25)
     // eller "mellan". null = inga skattningar den dagen.
-    function dayClass(rec) {
-      const h = dayLevel(rec, "helhet");
+    function levelClass(h) {
       if (h == null) return null;
       return h >= 3.5 ? "tung" : h <= 2.25 ? "latt" : "mellan";
+    }
+    function dayClass(rec) {
+      return levelClass(dayLevel(rec, "helhet"));
     }
 
     const WEEKDAYS = ["M", "T", "O", "T", "F", "L", "S"];
@@ -3054,7 +3118,9 @@
       return { days: all, offset: (first.getDay() + 6) % 7 };
     }
 
-    function buildCalendar(ym, days, offset) {
+    // partner = true: översikten för den som dagboken delas med. Då finns bara
+    // en färdig nivå per dag (d.level) och medicin; inga val, inga dagdetaljer.
+    function buildCalendar(ym, days, offset, partner) {
       const today = todayISO();
       let html = '<div class="card">';
       html += '<div class="cal-nav">' +
@@ -3063,7 +3129,7 @@
         '<button type="button" data-month="1" aria-label="Nästa månad"' +
         (ym >= today.slice(0, 7) ? " disabled" : "") + ">›</button></div>";
 
-      html += '<div class="cal-metrics">' + CAL_METRICS.map((m) =>
+      if (!partner) html += '<div class="cal-metrics">' + CAL_METRICS.map((m) =>
         '<button type="button" class="tag-opt' + (m.id === monsterMetric ? " selected" : "") +
         '" data-metric="' + m.id + '">' + m.label + "</button>").join("") + "</div>";
 
@@ -3072,7 +3138,8 @@
 
       html += '<div class="cal-grid">' + "<span></span>".repeat(offset);
       days.forEach((d) => {
-        const level = d.date > today ? null : dayLevel(d.mood, monsterMetric);
+        const level = d.date > today ? null
+          : partner ? d.level : dayLevel(d.mood, monsterMetric);
         const lv = level == null ? null : Math.max(1, Math.min(5, Math.round(level)));
         const marks =
           (d.med ? '<i class="m-med"></i>' : d.inCourse ? '<i class="m-med soft"></i>' : "") +
@@ -3085,12 +3152,14 @@
         if (d.med) what.push("medicin tagen");
         if (d.bleed) what.push("blödning");
         if (d.pill) what.push("ny p-pillerkarta");
-        html += '<button type="button" class="' + cls + '" data-date="' + d.date + '"' +
-          (d.date > today ? " disabled" : "") +
+        const tag = partner ? "div" : "button";
+        html += "<" + tag + (partner ? ' role="img"' : ' type="button"') +
+          ' class="' + cls + (partner ? " static" : "") + '" data-date="' + d.date + '"' +
+          (d.date > today && !partner ? " disabled" : "") +
           ' aria-label="' + fmtLong(d.date) + ": " + what.join(", ") + '"' +
           (lv ? ' style="background:' + tone(lv) + '"' : "") + ">" +
           "<span>" + Number(d.date.slice(8)) + "</span>" +
-          '<span class="cal-marks">' + marks + "</span></button>";
+          '<span class="cal-marks">' + marks + "</span></" + tag + ">";
       });
       html += "</div>";
 
@@ -3098,10 +3167,10 @@
         [1, 2, 3, 4, 5].map((l) => '<i class="t" style="background:' + tone(l) + '"></i>').join("") +
         " Tyngre</span>" +
         '<span><i class="m m-med"></i>Medicin</span>' +
-        '<span><i class="m m-bleed"></i>Blödning</span>' +
-        '<span><i class="m m-pill"></i>Ny p-pillerkarta</span></div>';
-      html += '<p class="hint" style="margin-top:8px">Tom ruta = inte loggat. ' +
-              "Tryck på en dag för att se den.</p>";
+        (partner ? "" : '<span><i class="m m-bleed"></i>Blödning</span>' +
+          '<span><i class="m m-pill"></i>Ny p-pillerkarta</span>') + "</div>";
+      html += '<p class="hint" style="margin-top:8px">Tom ruta = inte loggat.' +
+              (partner ? "" : " Tryck på en dag för att se den.") + "</p>";
       return html + "</div>";
     }
 
@@ -3444,6 +3513,9 @@
       : null;
 
     let syncUser = null;       // inloggad användare (eller null)
+    let partnerMode = false;   // inloggad som den som får en ÖVERSIKT (ingen egen dagbok)
+    let partnerData = null;    // senast hämtade översikt (se supabase/notiser.sql)
+    let partnerMonth = todayISO().slice(0, 7);
     let _syncRunning = false;  // lås: bara en synk åt gången
     let _syncAgain = false;    // någon bad om synk medan en redan körde
     let _syncTimer = null;
@@ -3463,7 +3535,7 @@
 
     // Be om en synk strax (samlar ihop flera sparningar till en körning).
     function scheduleSync() {
-      if (!sb || !syncUser) return;
+      if (!sb || !syncUser || partnerMode) return;
       clearTimeout(_syncTimer);
       _syncTimer = setTimeout(sync, 1500);
     }
@@ -3566,7 +3638,7 @@
 
     // Kör en hel synk (hämta, sedan skicka). Tyst vid fel: försöker igen senare.
     async function sync() {
-      if (!sb || !syncUser) return;
+      if (!sb || !syncUser || partnerMode) return;
       if (_syncRunning) { _syncAgain = true; return; }
       _syncRunning = true;
       try {
@@ -3629,8 +3701,242 @@
     });
 
     document.getElementById("btn-sync-logout").addEventListener("click", async () => {
-      if (!confirm("Logga ut? Dagboken ligger kvar på telefonen men slutar synkas.")) return;
+      if (!confirm(partnerMode
+        ? "Logga ut?"
+        : "Logga ut? Dagboken ligger kvar på telefonen men slutar synkas.")) return;
+      await disableNotis();   // notiserna hör till kontot
       await sb.auth.signOut();
+    });
+
+    /* --- Notiser (Web Push) ---
+       Telefonen prenumererar hos Apples/Googles push-tjänst och sparar
+       prenumerationen i tabellen push_subscriptions. Servern (Edge Function
+       "daglig-koll") skickar sedan notiserna. Den PUBLIKA VAPID-nyckeln får
+       ligga i koden; den hemliga finns bara i Supabase. På iPhone fungerar det
+       här bara när appen är tillagd på hemskärmen. Se
+       supabase/NOTISER-UPPSATTNING.md. */
+    const VAPID_PUBLIC_KEY = "";
+
+    function urlB64ToUint8Array(b64) {
+      const pad = "=".repeat((4 - (b64.length % 4)) % 4);
+      const raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+      return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+    }
+
+    async function currentPushSub() {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) return null;
+      const reg = await navigator.serviceWorker.getRegistration();
+      return reg ? reg.pushManager.getSubscription() : null;
+    }
+
+    async function renderNotisUI(msg) {
+      const st = document.getElementById("notis-status");
+      const on = document.getElementById("btn-notis-on");
+      const off = document.getElementById("btn-notis-off");
+      on.hidden = off.hidden = true;
+      if (!sb || !VAPID_PUBLIC_KEY) { st.textContent = "Notiser är inte inställda ännu."; return; }
+      if (!syncUser) { st.textContent = "Logga in för att kunna få notiser."; return; }
+      if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+        st.textContent = "Lägg till appen på hemskärmen och öppna den därifrån för att kunna få notiser.";
+        return;
+      }
+      if (Notification.permission === "denied") {
+        st.textContent = "Notiser är avstängda för appen i telefonens inställningar.";
+        return;
+      }
+      let sub = null;
+      try { sub = await currentPushSub(); } catch (_) { /* räknas som av */ }
+      if (sub) {
+        st.textContent = msg || "Notiser är på för den här telefonen.";
+        off.hidden = false;
+      } else {
+        st.textContent = msg || (partnerMode
+          ? "Få en notis när det kan vara på väg en tyngre period."
+          : "Få påminnelser om medicin och loggning, och en notis när appen känner igen mönstret.");
+        on.hidden = false;
+      }
+    }
+
+    async function enableNotis() {
+      try {
+        if ((await Notification.requestPermission()) !== "granted") { await renderNotisUI(); return; }
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC_KEY),
+        });
+        const j = sub.toJSON();
+        const { error } = await sb.from("push_subscriptions").upsert(
+          { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth },
+          { onConflict: "endpoint" });
+        if (error) { await sub.unsubscribe(); throw error; }
+        await renderNotisUI();
+      } catch (err) {
+        console.warn("Kunde inte slå på notiser:", err);
+        await renderNotisUI("Kunde inte slå på notiser just nu. Försök igen senare.");
+      }
+    }
+
+    // Stäng av på den här enheten (tyst om något går fel – t.ex. offline).
+    async function disableNotis() {
+      try {
+        const sub = await currentPushSub();
+        if (!sub) return;
+        if (sb && syncUser) await sb.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+        await sub.unsubscribe();
+      } catch (err) {
+        console.warn("Kunde inte stänga av notiser:", err);
+      }
+    }
+
+    document.getElementById("btn-notis-on").addEventListener("click", enableNotis);
+    document.getElementById("btn-notis-off").addEventListener("click", async () => {
+      await disableNotis();
+      await renderNotisUI();
+    });
+
+    // En notis (eller en länk med #vy) öppnar rätt vy.
+    function openViewByName(view) {
+      if (partnerMode) { showView("partner", "Översikt"); return; }
+      const tab = document.querySelector('.tab[data-view="' + view + '"]:not(.partner-only)');
+      if (tab) showView(view, tab.dataset.title);
+    }
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.addEventListener("message", (e) => {
+        if (e.data && e.data.type === "open-view") openViewByName(e.data.view);
+      });
+    }
+    if (location.hash.length > 1) {
+      const wanted = location.hash.slice(1);
+      history.replaceState(null, "", location.pathname + location.search);
+      setTimeout(() => openViewByName(wanted), 0);
+    }
+
+    /* --- Partnerläge ---
+       Den som står som "viewer" i tabellen shares får ingen dagbok utan en
+       ÖVERSIKT: en nivå per dag, medicindagar, omgångar och den senaste
+       signalen. Allt kommer från databasfunktionen partner_overview(), som
+       aldrig lämnar ut anteckningar, snabbval eller enskilda skattningar.
+       Översikten sparas inte i IndexedDB – bara en kopia i localStorage så att
+       den går att öppna utan nät. */
+    function enterPartnerMode() {
+      partnerMode = true;
+      document.body.classList.add("partner");
+      if (currentView !== "installningar") showView("partner", "Översikt");
+    }
+    function exitPartnerMode() {
+      localStorage.removeItem("partner-user");
+      localStorage.removeItem("partner-cache");
+      if (!partnerMode) return;
+      partnerMode = false;
+      partnerData = null;
+      document.body.classList.remove("partner");
+      showView("idag", "Idag");
+    }
+
+    // Avgör om den inloggade är partner, och hämta i så fall översikten.
+    async function checkPartner() {
+      if (localStorage.getItem("partner-user") === syncUser.id) {
+        try { partnerData = JSON.parse(localStorage.getItem("partner-cache")); } catch (_) {}
+        enterPartnerMode();
+      }
+      try {
+        const { data, error } = await sb.rpc("partner_overview");
+        if (error) throw error;
+        if (data && data.owner) {
+          partnerData = data;
+          localStorage.setItem("partner-user", syncUser.id);
+          localStorage.setItem("partner-cache", JSON.stringify(data));
+          if (partnerMode) renderPartner(); else enterPartnerMode();
+        } else {
+          exitPartnerMode();
+        }
+      } catch (err) {
+        // Funktionen saknas (inte uppsatt än) eller inget nät: behåll läget.
+        console.warn("Kunde inte hämta översikten:", err);
+      }
+    }
+
+    function renderPartner() {
+      const el = document.getElementById("partner-content");
+      const d = partnerData;
+      if (!d) {
+        el.innerHTML = '<div class="card"><p class="hint" style="margin:0">Hämtar översikten …</p></div>';
+        return;
+      }
+      const today = todayISO();
+      const courses = d.courses || [];
+      const active = courses.find((c) => c.active) || null;
+      const dayBy = new Map((d.days || []).map((x) => [x.date, x]));
+      const daysBetween = (a, b) =>
+        Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 864e5);
+      let html = "";
+
+      // Signalen: bara den korta raden som är skriven för partnern.
+      const s = d.signal;
+      if (s && s.dags && s.text_partner && s.date >= shiftDate(today, -2) && !active) {
+        html += '<div class="card"><div class="support-title">Det kan vara dags 💗</div>' +
+          '<p class="status-sub" style="margin:6px 0 0">' + escapeHTML(s.text_partner) + "</p>" +
+          '<p class="hint" style="margin-top:8px">' + fmtLong(s.date) + "</p></div>";
+      }
+
+      html += '<div class="card"><div class="status-eyebrow">Medicin</div>';
+      if (active) {
+        const taken = dayBy.get(today) && dayBy.get(today).med;
+        html += '<div class="support-title" style="margin-top:6px">Omgång pågår – dag ' +
+          (daysBetween(active.startdatum, today) + 1) + "</div>" +
+          '<p class="status-sub" style="margin:6px 0 0">' +
+          (taken ? "Tagen idag ✓" : "Inte bockad idag ännu.") + "</p>";
+      } else {
+        const last = courses.map((c) => c.slutdatum).filter(Boolean).sort().pop();
+        html += '<p class="status-sub" style="margin:8px 0 0">Ingen omgång pågår just nu.' +
+          (last ? " Den senaste slutade " + fmtLong(last) + " (" +
+            dagar(daysBetween(last, today)) + " sedan)." : "") + "</p>";
+      }
+      html += "</div>";
+
+      const first = new Date(partnerMonth + "-01T00:00:00");
+      const n = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+      const days = Array.from({ length: n }, (_, i) => {
+        const date = partnerMonth + "-" + String(i + 1).padStart(2, "0");
+        const x = dayBy.get(date);
+        return {
+          date,
+          level: x && x.level != null ? Number(x.level) : null,
+          med: !!(x && x.med),
+          inCourse: courses.some((c) => date >= c.startdatum && date <= (c.slutdatum || today)),
+        };
+      });
+      html += buildCalendar(partnerMonth, days, (first.getDay() + 6) % 7, true);
+
+      const past = days.filter((x) => x.date <= today);
+      const classes = past.map((x) => levelClass(x.level));
+      const tile = (v, label) => '<div class="tile"><b>' + v + "</b><span>" + label + "</span></div>";
+      html += '<div class="card"><div class="status-eyebrow" style="color:var(--muted)">' +
+        monthTitle(partnerMonth) + " i korthet</div>" + '<div class="tiles">' +
+        tile(past.filter((x) => x.level != null).length + " av " + past.length, "dagar loggade") +
+        tile(classes.filter((c) => c === "tung").length, "tunga dagar") +
+        tile(classes.filter((c) => c === "latt").length, "lätta dagar") +
+        tile(past.filter((x) => x.med).length, "dagar med medicin") + "</div></div>";
+
+      html += '<p class="hint" style="margin:12px 4px 0">Du ser en översikt: hur tung varje ' +
+        "dag har varit och när medicinen tagits. Det hon skriver och de enskilda " +
+        "skattningarna visas inte här.</p>" +
+        '<button type="button" class="btn secondary" data-act="partner-refresh">Uppdatera</button>';
+      el.innerHTML = html;
+    }
+
+    document.getElementById("partner-content").addEventListener("click", async (e) => {
+      const nav = e.target.closest("[data-month]");
+      if (nav) {
+        partnerMonth = shiftMonth(partnerMonth, Number(nav.dataset.month));
+        renderPartner();
+        return;
+      }
+      if (e.target.closest('[data-act="partner-refresh"]')) {
+        await checkPartner();
+        showToast("Uppdaterat ✓");
+      }
     });
 
     if (sb) {
@@ -3641,14 +3947,23 @@
         syncUser = user;
         if (wasSameUser) return; // bara en förnyad nyckel – inget att göra
         // Supabase-anrop får inte göras direkt i den här återkopplingen.
-        setTimeout(() => {
+        setTimeout(async () => {
           renderSyncUI();
-          if (syncUser) sync(); else setSyncStatus("");
+          if (!syncUser) {
+            setSyncStatus("");
+            exitPartnerMode();
+            renderNotisUI();
+            return;
+          }
+          await checkPartner();   // partner → översikt i stället för dagbok
+          renderNotisUI();
+          if (!partnerMode) sync();
         }, 0);
       });
       window.addEventListener("online", () => scheduleSync());
     }
     renderSyncUI();
+    renderNotisUI();
 
     /* --- När appen kommer tillbaka i förgrunden ---
        En app på hemskärmen laddas inte om, den fortsätter där den var. Om
@@ -3665,6 +3980,7 @@
       }
       refreshCurrentView();
       scheduleSync();
+      if (partnerMode && syncUser) checkPartner();
     });
 
     // Be webbläsaren att inte rensa lagringen när utrymmet tryter.
