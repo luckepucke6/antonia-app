@@ -54,7 +54,8 @@ sections:
 There is a fourth store, `courses` (`keyPath: "omgangId"`), for medication
 courses. Later sections in the script: (e) Mående, (f) Medicin, (g) Blödningar,
 (h) Idag (incl. the support card for heavy periods), (i) Sync, (j) Mönster
-(timeline per day, simple comparisons, printable report). There is also a fifth
+(month calendar coloured by a chosen metric, bar statistics built on the share
+of "heavy days" — see `dayClass` — and a printable report). There is also a fifth
 store, `notes` (`keyPath: "key"`). Settings is opened from the gear in the header.
 
 Things that live in existing stores rather than their own:
