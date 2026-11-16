@@ -41,8 +41,12 @@
     html, body {
       margin: 0;
       padding: 0;
-      height: 100%;
     }
+    html { height: 100%; }
+    /* min-height (inte height): annars hamnar bodys nederkants-utrymme mitt i
+       sidan när innehållet är längre än skärmen, och det sista på sidan går
+       inte att skrolla fram ovanför flik-raden. */
+    body { min-height: 100%; }
 
     body {
       background: var(--bg);
@@ -177,6 +181,16 @@
       -webkit-tap-highlight-color: transparent;
     }
     .tab .icon { font-size: 1.2rem; line-height: 1; }
+    /* Partnerläge (inloggad som den som får en översikt): bara Översikt-fliken,
+       ingen loggning, ingen säkerhetskopiering. */
+    /* body har height:100%, så dess padding-bottom försvinner när innehållet är
+       längre än skärmen – lämna plats för flik-raden här i stället. */
+    .tab.partner-only { display: none; }
+    body.partner .tab { display: none; }
+    body.partner .tab.partner-only { display: flex; }
+    body.partner #btn-sync-now,
+    body.partner #backup-card { display: none; }
+    .cal-day.static { cursor: default; }
     .tab.active { color: var(--accent); }
 
     /* ========================================================================
@@ -664,48 +678,110 @@
     }
 
     /* ------------------------------------------------------------------
-       Mönster-vyn: tidslinje med en rad per symtom och en ruta per dag.
-       Mörkare ruta = tyngre dag. Inga larmfärger.
+       Mönster-vyn: månadskalender (en ruta per dag, mörkare = tyngre dag)
+       och enkel statistik med staplar. En enda färgton för "tyngd"; medicin,
+       blödning och p-pillerkarta är markörer med egen form OCH färg.
        --------------------------------------------------------------- */
-    .pt-row { margin-top: 10px; }
-    .pt-label {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.78rem;
-      color: var(--muted);
-      margin-bottom: 3px;
-    }
-    .pt-strip { display: grid; gap: 1px; }
-    .pt-cell {
-      height: 16px;
-      border-radius: 2px;
-      /* Ej loggat: bara en tunn ram, så det inte förväxlas med en lätt dag. */
-      background: transparent;
-      box-shadow: inset 0 0 0 1px var(--line);
+    .cal-nav { display: flex; align-items: center; justify-content: space-between; }
+    .cal-title { font-size: 1.08rem; font-weight: 700; }
+    .cal-nav button {
+      width: 40px; height: 40px;
+      font-size: 1.4rem; line-height: 1;
+      color: var(--accent);
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 50%;
       cursor: pointer;
     }
-    .pt-cell.sel { box-shadow: 0 0 0 1.5px var(--text); position: relative; z-index: 1; }
-    /* Många dagar (180): rutorna blir för smala för egna ramar, så hela
-       raden får en ram och rutorna ligger kant i kant. */
-    .pt-strip.dense { gap: 0; border-radius: 2px; box-shadow: inset 0 0 0 1px var(--line); }
-    .pt-strip.dense .pt-cell { border-radius: 0; box-shadow: none; }
-    .pt-strip.dense .pt-cell.sel { box-shadow: 0 0 0 1.5px var(--text); }
-    .pt-axis {
+    .cal-nav button:disabled { opacity: 0.3; cursor: default; }
+    /* Val av vad färgen visar: en rad som går att svepa i sidled. */
+    .cal-metrics {
       display: flex;
-      justify-content: space-between;
-      margin-top: 6px;
-      font-size: 0.72rem;
-      color: var(--muted);
+      gap: 8px;
+      margin: 12px -18px 0;
+      padding: 0 18px 4px;
+      overflow-x: auto;
+      scrollbar-width: none;
     }
-    .pt-legend {
+    .cal-metrics::-webkit-scrollbar { display: none; }
+    .cal-metrics .tag-opt { flex: none; min-height: 36px; padding: 6px 12px; font-size: 0.85rem; }
+    .cal-head, .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+    .cal-head {
+      margin-top: 14px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-align: center;
+    }
+    .cal-grid { margin-top: 6px; }
+    .cal-day {
+      aspect-ratio: 1;
       display: flex;
+      flex-direction: column;
       align-items: center;
-      gap: 6px;
+      justify-content: center;
+      gap: 3px;
+      padding: 0;
+      font: inherit;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text);
+      /* Ej loggat: bara en tunn ram, så det inte förväxlas med en lätt dag. */
+      background: transparent;
+      border: none;
+      border-radius: 10px;
+      box-shadow: inset 0 0 0 1px var(--line);
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .cal-day.has { box-shadow: none; }
+    .cal-day.dark { color: #fff; }
+    .cal-day.today { box-shadow: inset 0 0 0 2px var(--accent); }
+    .cal-day.sel { box-shadow: 0 0 0 2px var(--text); }
+    .cal-day.future { color: var(--muted); opacity: 0.45; cursor: default; }
+    .cal-marks { display: flex; align-items: center; gap: 3px; height: 7px; }
+    .cal-marks i, .cal-legend i.m { display: block; outline: 1px solid #fff; }
+    .m-med { width: 12px; height: 4px; border-radius: 2px; background: #3D7FB8; }
+    .m-med.soft { opacity: 0.4; }
+    .m-bleed { width: 7px; height: 7px; border-radius: 50%; background: #A8404F; }
+    .m-pill { width: 6px; height: 6px; background: #B8862B; transform: rotate(45deg); }
+    .cal-legend {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 14px;
       margin-top: 12px;
       font-size: 0.75rem;
       color: var(--muted);
     }
-    .pt-legend i { width: 14px; height: 10px; border-radius: 2px; display: inline-block; }
+    .cal-legend span { display: inline-flex; align-items: center; gap: 5px; }
+    .cal-legend i.t { width: 14px; height: 10px; border-radius: 3px; display: inline-block; }
+
+    /* Nyckeltal i rutor. */
+    .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 12px; }
+    .tile { padding: 12px 14px; background: var(--bg); border-radius: 14px; }
+    .tile b { display: block; font-size: 1.5rem; line-height: 1.15; }
+    .tile span { font-size: 0.8rem; color: var(--muted); }
+
+    /* Liggande staplar: etikett + värde ovanför, stapeln under. */
+    .bar-row { margin-top: 14px; }
+    .bar-head { display: flex; justify-content: space-between; gap: 10px; font-size: 0.92rem; }
+    .bar-head b { white-space: nowrap; }
+    .bar-sub { font-size: 0.75rem; color: var(--muted); }
+    .bar-track {
+      display: flex;
+      gap: 2px;
+      height: 10px;
+      margin-top: 5px;
+      background: var(--accent-soft);
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    .bar-track i { display: block; height: 100%; border-radius: 5px; }
+    .bar-track.stack { background: none; }
+    .bar-track.stack i { border-radius: 3px; min-width: 3px; }
+    .stat-row .stat-val { white-space: nowrap; }
+
     .day-detail-list { margin: 8px 0 0; padding: 0; list-style: none; }
     .day-detail-list li {
       display: flex;
@@ -981,9 +1057,14 @@
       <div id="bleeding-content"></div>
     </section>
 
-    <!-- 5. Mönster – tidslinje över loggningen + läkarrapport -->
+    <!-- 5. Mönster – kalender, statistik + läkarrapport -->
     <section id="view-monster" class="view">
       <div id="monster-content"></div>
+    </section>
+
+    <!-- Partnerläge: begränsad översikt för den som dagboken delas med. -->
+    <section id="view-partner" class="view">
+      <div id="partner-content"></div>
     </section>
 
     <!-- 6. Inställningar (nås via kugghjulet) – synk + export/import -->
@@ -1015,7 +1096,15 @@
         <p class="hint" id="sync-status" aria-live="polite"></p>
       </div>
 
+      <!-- Notiser (kräver inloggning och att appen ligger på hemskärmen). -->
       <div class="card">
+        <strong>Notiser</strong>
+        <p class="hint" style="margin-top:6px;" id="notis-status" aria-live="polite"></p>
+        <button class="btn" type="button" id="btn-notis-on" hidden>Slå på notiser</button>
+        <button class="btn secondary" type="button" id="btn-notis-off" hidden>Stäng av notiser på den här telefonen</button>
+      </div>
+
+      <div class="card" id="backup-card">
         <strong>Säkerhetskopiering</strong>
         <p class="hint" style="margin-top:6px;">
           Exportera då och då så har du en egen kopia av allt, oavsett vad som
@@ -1056,6 +1145,9 @@
     <button class="tab" data-view="monster" data-title="Mönster">
       <span class="icon">📈</span><span>Mönster</span>
     </button>
+    <button class="tab partner-only" data-view="partner" data-title="Översikt">
+      <span class="icon">💗</span><span>Översikt</span>
+    </button>
   </nav>
 
   <!-- Supabase-klienten (låst version 2.119.0, lokal fil så den fungerar offline) -->
@@ -1090,6 +1182,7 @@
       if (name === "medicin") renderMedicin();
       if (name === "blodningar") renderBleeding();
       if (name === "monster") renderMonster();
+      if (name === "partner") renderPartner();
     }
 
     // Kugghjulet i sidhuvudet öppnar Inställningar (ingen egen flik).
@@ -2758,6 +2851,29 @@
       return html + "</div>";
     }
 
+    /* --- "Känner du igen det här?" ---
+       Servern (Edge Function "daglig-koll") jämför varje kväll de senaste
+       dagarna med hur tidigare omgångar började och sparar resultatet i
+       "notes" under nyckeln "signal": { date, dags, sakerhet, liknar, text }.
+       Kortet visas om signalen är färsk, ingen omgång pågår och hon inte har
+       tryckt "Inte nu" för just den signalen. */
+    function buildSignal(sig, courses, today) {
+      if (!sig || !sig.dags || !sig.text) return "";
+      if (sig.date < shiftDate(today, -2)) return "";
+      if (courses.some((c) => c.active)) return "";
+      if (localStorage.getItem("signal-dismissed") === sig.date) return "";
+      let html = '<div class="card"><div class="support-title">Känner du igen det här? 💗</div>' +
+        '<p class="status-sub" style="margin:6px 0 0">' + escapeHTML(sig.text) + "</p>";
+      if (sig.liknar) {
+        html += '<button type="button" class="text-btn" data-act="signal-see" data-date="' +
+                escapeHTML(sig.liknar) + '">Se ' + fmtLong(sig.liknar) + " i Mönster</button>";
+      }
+      html += '<button type="button" class="btn" data-act="signal-start">Öppna Medicin</button>' +
+              '<button type="button" class="btn secondary" data-act="signal-dismiss" data-date="' +
+              escapeHTML(sig.date) + '">Inte nu</button>';
+      return html + "</div>";
+    }
+
     // Undvik-listan: hennes egen text om sådant hon vill undvika (t.ex. mat
     // som ger magont). Sparas i "notes" under nyckeln "avoid".
     let avoidEditing = false;
@@ -2781,13 +2897,14 @@
     // Bygg om hela Idag-vyn från databasen.
     async function renderIdag() {
       const today = todayISO();
-      const [moodRec, courses, meds, bleed, mood1, mood2, helps, avoid] = await Promise.all([
+      const [moodRec, courses, meds, bleed, mood1, mood2, helps, avoid, signal] = await Promise.all([
         getRecord("mood", today), getAll("courses"),
         getAll("medication"), getAll("bleeding"),
         getRecord("mood", shiftDate(today, -1)),
         getRecord("mood", shiftDate(today, -2)),
         getRecord("notes", "helps"),
         getRecord("notes", "avoid"),
+        getRecord("notes", "signal"),
       ]);
       const recentMood = [moodRec, mood1, mood2];
 
@@ -2800,6 +2917,7 @@
       const support = buildSupport(recentMood, (helps && helps.text) || "", today);
       // En tung dag hamnar stödet överst, annars som en diskret länk längst ner.
       const supportFirst = !support.startsWith("<button");
+      html += buildSignal(signal, courses, today);
       if (supportFirst) html += support;
       html += buildIdagMood(moodRec);
       html += buildIdagMed(courses, meds, today);
@@ -2852,6 +2970,18 @@
         case "support-med":
           showView("medicin", "Medicin");
           break;
+        case "signal-see":
+          monsterMonth = actEl.dataset.date.slice(0, 7);
+          monsterSelected = actEl.dataset.date;
+          showView("monster", "Mönster");
+          break;
+        case "signal-start":
+          showView("medicin", "Medicin");
+          break;
+        case "signal-dismiss":
+          localStorage.setItem("signal-dismissed", actEl.dataset.date);
+          await renderIdag();
+          break;
         case "avoid-edit":
           avoidEditing = true;
           await renderIdag();
@@ -2871,17 +3001,20 @@
     renderIdag();
 
     /* ======================================================================
-       j) MÖNSTER-VYN – tidslinje, jämförelser och läkarrapport
+       j) MÖNSTER-VYN – kalender, statistik och läkarrapport
 
        Visar loggningen över KALENDERTID (hon tar p-piller kontinuerligt, så
-       det finns inga cykelfaser att räkna på). En rad per symtom, en ruta per
-       dag; mörkare ruta = tyngre dag. Blödningar och medicinomgångar ligger
-       som egna rader överst så att man ser hur de sammanfaller med måendet.
+       det finns inga cykelfaser att räkna på). En månadskalender med en ruta
+       per dag; mörkare ruta = tyngre dag. Medicin, blödning och ny
+       p-pillerkarta är markörer i rutan så att man ser hur de sammanfaller
+       med måendet. Under kalendern: statistik på andelen tunga dagar.
        Inga prognoser och inga diagnoser – bara det som faktiskt loggats.
        =================================================================== */
     const monsterContent = document.getElementById("monster-content");
     const MONSTER_PERIODS = [30, 90, 180];
-    let monsterDays = 30;        // hur många dagar bakåt som visas
+    let monsterDays = 30;        // hur många dagar läkarrapporten täcker
+    let monsterMonth = todayISO().slice(0, 7);  // månad som kalendern visar
+    let monsterMetric = "helhet"; // vad kalenderns färg visar
     let monsterSelected = null;  // vald dag (YYYY-MM-DD) eller null
 
     // Kortnamn till rapportens kolumner.
@@ -2909,16 +3042,20 @@
     function fmtAvg(n) { return n.toFixed(1).replace(".", ","); }
     function avg(list) { return list.reduce((a, b) => a + b, 0) / list.length; }
 
-    // Samla allt per datum för de senaste n dagarna (äldst först).
-    function collectDays(n, mood, bleeding, meds, courses, packDates) {
+    // Samla allt per datum för de senaste n dagarna (äldst först), eller för
+    // en given lista med datum.
+    function collectDays(n, mood, bleeding, meds, courses, packDates, dates) {
       const packs = new Set(packDates || []);
       const today = todayISO();
       const moodBy = new Map(mood.map((m) => [m.date, m]));
       const bleedBy = new Map(bleeding.map((b) => [b.date, b]));
       const medBy = new Map(meds.map((m) => [m.date, m]));
       const days = [];
-      for (let i = n - 1; i >= 0; i--) {
-        const date = shiftDate(today, -i);
+      if (!dates) {
+        dates = [];
+        for (let i = n - 1; i >= 0; i--) dates.push(shiftDate(today, -i));
+      }
+      for (const date of dates) {
         days.push({
           date,
           mood: moodBy.get(date) || null,
@@ -2932,68 +3069,219 @@
       return days;
     }
 
-    // En rad i tidslinjen. cellFn(dag) → { color, title } eller null (ej loggat).
-    function stripRowHTML(label, right, days, cellFn) {
-      const cells = days.map((d) => {
-        const c = cellFn(d);
-        return '<div class="pt-cell' + (d.date === monsterSelected ? " sel" : "") +
-          '" data-date="' + d.date + '"' +
-          (c ? ' style="background:' + c + '"' : "") + "></div>";
-      }).join("");
-      return '<div class="pt-row"><div class="pt-label"><span>' + label +
-        "</span><span>" + (right || "") + "</span></div>" +
-        '<div class="pt-strip' + (days.length > 90 ? " dense" : "") +
-        '" style="grid-template-columns:repeat(' +
-        days.length + ',1fr)">' + cells + "</div></div>";
-    }
     const tone = (level) => "rgba(176,96,112," + (level / 5).toFixed(2) + ")";
 
-    function buildTimeline(days) {
+    /* --- Dagens "tyngd" ---
+       level 1–5 för det som kalendern ska färga efter. "helhet" = snittet av
+       dagens alla ifyllda skattningar (vända så att 5 alltid är tyngst). */
+    const CAL_METRICS = [{ id: "helhet", label: "Helhet" }]
+      .concat(MOOD_METRICS.map((m) => ({ id: m.id, label: m.label })))
+      .concat([{ id: "sleepHours", label: "Sömntimmar" }]);
+
+    function dayLevel(rec, metricId) {
+      if (!rec) return null;
+      if (metricId === "sleepHours")
+        return rec.sleepHours != null ? sleepHeaviness(rec.sleepHours) : null;
+      const scores = rec.scores || {};
+      if (metricId === "helhet") {
+        const vals = MOOD_METRICS.filter((m) => scores[m.id] != null)
+          .map((m) => heaviness(m, scores[m.id]));
+        return vals.length ? avg(vals) : null;
+      }
+      const m = MOOD_METRICS.find((x) => x.id === metricId);
+      return m && scores[m.id] != null ? heaviness(m, scores[m.id]) : null;
+    }
+
+    // Dela in en loggad dag: "tung" (snitt minst 3,5), "latt" (högst 2,25)
+    // eller "mellan". null = inga skattningar den dagen.
+    function levelClass(h) {
+      if (h == null) return null;
+      return h >= 3.5 ? "tung" : h <= 2.25 ? "latt" : "mellan";
+    }
+    function dayClass(rec) {
+      return levelClass(dayLevel(rec, "helhet"));
+    }
+
+    const WEEKDAYS = ["M", "T", "O", "T", "F", "L", "S"];
+    const monthISO = (d) => isoFromDate(d).slice(0, 7);
+    function monthTitle(ym) {
+      const t = new Intl.DateTimeFormat("sv-SE", { month: "long", year: "numeric" })
+        .format(new Date(ym + "-01T00:00:00"));
+      return t.charAt(0).toUpperCase() + t.slice(1);
+    }
+    function shiftMonth(ym, delta) {
+      const d = new Date(ym + "-01T00:00:00");
+      d.setMonth(d.getMonth() + delta);
+      return monthISO(d);
+    }
+
+    // Alla dagar i en månad (YYYY-MM), med samma innehåll som collectDays.
+    function monthDays(ym, data) {
+      const first = new Date(ym + "-01T00:00:00");
+      const n = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+      const all = collectDays(0, data.mood, data.bleeding, data.meds, data.courses, data.packDates,
+        Array.from({ length: n }, (_, i) => ym + "-" + String(i + 1).padStart(2, "0")));
+      return { days: all, offset: (first.getDay() + 6) % 7 };
+    }
+
+    // partner = true: översikten för den som dagboken delas med. Då finns bara
+    // en färdig nivå per dag (d.level) och medicin; inga val, inga dagdetaljer.
+    function buildCalendar(ym, days, offset, partner) {
+      const today = todayISO();
       let html = '<div class="card">';
-      html += '<div class="dose-group" id="monster-period">' +
-        MONSTER_PERIODS.map((n) =>
-          '<button type="button" class="dose-opt' + (n === monsterDays ? " selected" : "") +
-          '" data-days="' + n + '">' + n + " dagar</button>").join("") + "</div>";
+      html += '<div class="cal-nav">' +
+        '<button type="button" data-month="-1" aria-label="Föregående månad">‹</button>' +
+        '<span class="cal-title">' + monthTitle(ym) + "</span>" +
+        '<button type="button" data-month="1" aria-label="Nästa månad"' +
+        (ym >= today.slice(0, 7) ? " disabled" : "") + ">›</button></div>";
 
-      const logged = days.filter((d) => d.mood).length;
-      html += '<p class="hint" style="margin-top:10px">Loggat ' + logged + " av " +
-              days.length + " dagar. Tryck på en dag för att se den.</p>";
+      if (!partner) html += '<div class="cal-metrics">' + CAL_METRICS.map((m) =>
+        '<button type="button" class="tag-opt' + (m.id === monsterMetric ? " selected" : "") +
+        '" data-metric="' + m.id + '">' + m.label + "</button>").join("") + "</div>";
 
-      // Markör-rader: medicin och blödning.
-      html += stripRowHTML("Medicin", "", days, (d) =>
-        d.med ? "rgba(122,150,136,1)" : d.inCourse ? "rgba(122,150,136,0.3)" : null);
-      html += stripRowHTML("Blödning", "", days, (d) =>
-        d.bleed ? "rgba(180,80,94," + (0.25 + 0.18 * (FLOW_LEVEL[d.bleed.flow] || 2)).toFixed(2) + ")" : null);
+      html += '<div class="cal-head">' +
+        WEEKDAYS.map((w) => "<span>" + w + "</span>").join("") + "</div>";
 
-      html += stripRowHTML("Ny p-pillerkarta", "", days, (d) =>
-        d.pill ? "rgba(108,122,168,1)" : null);
-
-      // En rad per skattning.
-      MOOD_METRICS.forEach((m) => {
-        html += stripRowHTML(m.label, "", days, (d) => {
-          const v = d.mood && d.mood.scores ? d.mood.scores[m.id] : null;
-          return v != null ? tone(heaviness(m, v)) : null;
-        });
+      html += '<div class="cal-grid">' + "<span></span>".repeat(offset);
+      days.forEach((d) => {
+        const level = d.date > today ? null
+          : partner ? d.level : dayLevel(d.mood, monsterMetric);
+        const lv = level == null ? null : Math.max(1, Math.min(5, Math.round(level)));
+        const marks =
+          (d.med ? '<i class="m-med"></i>' : d.inCourse ? '<i class="m-med soft"></i>' : "") +
+          (d.bleed ? '<i class="m-bleed"></i>' : "") +
+          (d.pill ? '<i class="m-pill"></i>' : "");
+        const cls = "cal-day" + (lv ? " has" : "") + (lv >= 4 ? " dark" : "") +
+          (d.date === today ? " today" : "") + (d.date > today ? " future" : "") +
+          (d.date === monsterSelected ? " sel" : "");
+        const what = [lv ? "tyngd " + lv + " av 5" : "inte loggat"];
+        if (d.med) what.push("medicin tagen");
+        if (d.bleed) what.push("blödning");
+        if (d.pill) what.push("ny p-pillerkarta");
+        const tag = partner ? "div" : "button";
+        html += "<" + tag + (partner ? ' role="img"' : ' type="button"') +
+          ' class="' + cls + (partner ? " static" : "") + '" data-date="' + d.date + '"' +
+          (d.date > today && !partner ? " disabled" : "") +
+          ' aria-label="' + fmtLong(d.date) + ": " + what.join(", ") + '"' +
+          (lv ? ' style="background:' + tone(lv) + '"' : "") + ">" +
+          "<span>" + Number(d.date.slice(8)) + "</span>" +
+          '<span class="cal-marks">' + marks + "</span></" + tag + ">";
       });
-      html += stripRowHTML("Sömntimmar", "", days, (d) =>
-        d.mood && d.mood.sleepHours != null ? tone(sleepHeaviness(d.mood.sleepHours)) : null);
+      html += "</div>";
 
-      // Snabbval: mörkare ruta ju fler taggar den dagen.
-      html += stripRowHTML("Snabbval", "", days, (d) => {
-        const n = d.mood && d.mood.tags ? d.mood.tags.length : 0;
-        return n ? tone(Math.min(5, n + 1)) : null;
-      });
-
-      html += '<div class="pt-axis"><span>' + fmtShort(days[0].date) + "</span><span>" +
-              fmtShort(days[days.length - 1].date) + "</span></div>";
-      html += '<div class="pt-legend"><span>Lättare</span>' +
-              [1, 2, 3, 4, 5].map((l) => '<i style="background:' + tone(l) + '"></i>').join("") +
-              "<span>Tyngre</span></div>";
-      html += '<div class="pt-legend"><i style="background:rgba(122,150,136,1)"></i>' +
-              "<span>Medicin tagen</span>" +
-              '<i style="background:rgba(122,150,136,0.3);margin-left:8px"></i><span>Omgång pågår</span>' +
-              '<i style="box-shadow:inset 0 0 0 1px var(--line);margin-left:8px"></i><span>Ej loggat</span></div>';
+      html += '<div class="cal-legend"><span>Lättare ' +
+        [1, 2, 3, 4, 5].map((l) => '<i class="t" style="background:' + tone(l) + '"></i>').join("") +
+        " Tyngre</span>" +
+        '<span><i class="m m-med"></i>Medicin</span>' +
+        (partner ? "" : '<span><i class="m m-bleed"></i>Blödning</span>' +
+          '<span><i class="m m-pill"></i>Ny p-pillerkarta</span>') + "</div>";
+      html += '<p class="hint" style="margin-top:8px">Tom ruta = inte loggat.' +
+              (partner ? "" : " Tryck på en dag för att se den.") + "</p>";
       return html + "</div>";
+    }
+
+    // En liggande stapel: etikett, värde till höger, stapel (0–1) under.
+    function barRowHTML(label, value, share, sub) {
+      return '<div class="bar-row"><div class="bar-head"><span>' + label +
+        "</span><b>" + value + "</b></div>" +
+        '<div class="bar-track"><i style="width:' + Math.round(share * 100) +
+        "%;background:" + tone(4) + '"></i></div>' +
+        (sub ? '<div class="bar-sub">' + sub + "</div>" : "") + "</div>";
+    }
+    const pct = (n, of) => Math.round((n / of) * 100) + " %";
+
+    // Nyckeltal för den månad som visas.
+    function buildMonthTiles(ym, days) {
+      const today = todayISO();
+      const past = days.filter((d) => d.date <= today);
+      const classes = past.map((d) => dayClass(d.mood));
+      const tile = (n, label) => '<div class="tile"><b>' + n + "</b><span>" + label + "</span></div>";
+      return '<div class="card"><div class="status-eyebrow" style="color:var(--muted)">' +
+        monthTitle(ym) + " i korthet</div>" + '<div class="tiles">' +
+        tile(past.filter((d) => d.mood).length + " av " + past.length, "dagar loggade") +
+        tile(classes.filter((c) => c === "tung").length, "tunga dagar") +
+        tile(classes.filter((c) => c === "latt").length, "lätta dagar") +
+        tile(past.filter((d) => d.med).length, "dagar med medicin") +
+        "</div></div>";
+    }
+
+    /* --- Statistik på ALL loggad data ---
+       Allt bygger på andelen tunga dagar (se dayClass). Varje grupp kräver
+       minst MIN_GROUP dagar. Formuleras försiktigt: samband, inte orsak. */
+    function buildMedEffect(mood, courses) {
+      const today = todayISO();
+      const inCourse = (date) => courses.some((c) =>
+        date >= c.startdatum && date <= (c.slutdatum || today));
+      // De tre dagarna före varje omgångsstart (som inte ligger i en annan omgång).
+      const before = new Set();
+      courses.forEach((c) => {
+        for (let i = 1; i <= 3; i++) {
+          const d = shiftDate(c.startdatum, -i);
+          if (!inCourse(d)) before.add(d);
+        }
+      });
+      const groups = [
+        { label: "Tre dagar före en omgång", days: [] },
+        { label: "Under en omgång", days: [] },
+        { label: "Övriga dagar", days: [] },
+      ];
+      mood.forEach((m) => {
+        const c = dayClass(m);
+        if (!c) return;
+        groups[inCourse(m.date) ? 1 : before.has(m.date) ? 0 : 2].days.push(c);
+      });
+      const shown = groups.filter((g) => g.days.length >= MIN_GROUP);
+      if (shown.length < 2) return "";
+      return '<div class="card"><div class="status-eyebrow" style="color:var(--muted)">' +
+        "Runt medicinomgångarna</div>" +
+        '<p class="hint" style="margin-top:6px">Hur stor del av dagarna som var tunga.</p>' +
+        shown.map((g) => {
+          const heavy = g.days.filter((c) => c === "tung").length;
+          return barRowHTML(g.label, pct(heavy, g.days.length) + " tunga",
+            heavy / g.days.length, heavy + " av " + dagar(g.days.length));
+        }).join("") + "</div>";
+    }
+
+    function buildMonthsOverview(mood) {
+      const by = new Map();
+      mood.forEach((m) => {
+        const c = dayClass(m);
+        if (!c) return;
+        const ym = m.date.slice(0, 7);
+        if (!by.has(ym)) by.set(ym, { latt: 0, mellan: 0, tung: 0 });
+        by.get(ym)[c]++;
+      });
+      const months = [...by.keys()].sort().slice(-12);
+      if (months.length < 2) return "";
+      const seg = [["latt", 1], ["mellan", 3], ["tung", 5]];
+      return '<div class="card"><div class="status-eyebrow" style="color:var(--muted)">' +
+        "Månad för månad</div>" +
+        months.map((ym) => {
+          const c = by.get(ym);
+          const total = c.latt + c.mellan + c.tung;
+          return '<div class="bar-row"><div class="bar-head"><span>' +
+            monthTitle(ym).split(" ")[0] + "</span><b>" + c.tung + " tunga av " + total +
+            '</b></div><div class="bar-track stack">' +
+            seg.filter(([k]) => c[k]).map(([k, lv]) =>
+              '<i style="flex:' + c[k] + ";background:" + tone(lv) + '"></i>').join("") +
+            "</div></div>";
+        }).join("") +
+        '<div class="cal-legend">' +
+        '<span><i class="t" style="background:' + tone(1) + '"></i>Lätta dagar</span>' +
+        '<span><i class="t" style="background:' + tone(3) + '"></i>Mellan</span>' +
+        '<span><i class="t" style="background:' + tone(5) + '"></i>Tunga dagar</span></div></div>';
+    }
+
+    function buildTagStats(mood) {
+      const counts = MOOD_TAGS.map((t) => ({
+        label: t.label,
+        n: mood.filter((m) => (m.tags || []).includes(t.id)).length,
+      })).filter((t) => t.n).sort((a, b) => b.n - a.n);
+      if (!counts.length) return "";
+      return '<div class="card"><div class="status-eyebrow" style="color:var(--muted)">' +
+        "Vanligaste snabbvalen</div>" +
+        counts.map((t) => barRowHTML(t.label, dagar(t.n), t.n / counts[0].n)).join("") +
+        "</div>";
     }
 
     // Kort med den valda dagens innehåll.
@@ -3056,12 +3344,8 @@
 
     function buildComparisons(mood, bleeding) {
       let html = '<div class="card"><div class="status-eyebrow" ' +
-                 'style="color:var(--muted)">Mönster hittills</div>';
-      if (mood.length < MIN_DAYS_FOR_PATTERNS) {
-        return html + '<p class="hint" style="margin-top:8px">När du har loggat ungefär ' +
-          MIN_DAYS_FOR_PATTERNS + " dagar visas enkla jämförelser här. Hittills: " +
-          dagar(mood.length) + ".</p></div>";
-      }
+                 'style="color:var(--muted)">Fler jämförelser</div>';
+      if (mood.length < MIN_DAYS_FOR_PATTERNS) return "";
       const sc = (m, id) => (m.scores && m.scores[id] != null ? m.scores[id] : null);
       const pick = (list, id) => list.map((m) => sc(m, id)).filter((v) => v != null);
 
@@ -3081,8 +3365,8 @@
         { name: "blödning", values: pick(mood.filter((m) => bleedDates.has(m.date)), "humor") },
         { name: "övriga", values: pick(mood.filter((m) => !bleedDates.has(m.date)), "humor") });
 
-      html += lines || '<p class="hint" style="margin-top:8px">Det behövs fler ' +
-        "dagar med sömn, stress eller blödning loggat för att jämföra.</p>";
+      if (!lines) return "";
+      html += lines;
       html += '<p class="hint" style="margin-top:12px">Snittvärden på skalan 1–5. ' +
               "Det här visar samband i din loggning, inte vad som orsakar vad.</p>";
       return html + "</div>";
@@ -3118,36 +3402,68 @@
       window.print();
     }
 
-    let _monsterDays = [];  // senast visade dagar (för klick och rapport)
+    let _monsterData = null;  // senast hämtade data (för rapporten)
 
     async function renderMonster() {
       const [mood, bleeding, meds, courses, packDates] = await Promise.all([
         getAll("mood"), getAll("bleeding"), getAll("medication"), getAll("courses"),
         getPillPackDates(),
       ]);
-      _monsterDays = collectDays(monsterDays, mood, bleeding, meds, courses, packDates);
-      const selected = _monsterDays.find((d) => d.date === monsterSelected) || null;
+      _monsterData = { mood, bleeding, meds, courses, packDates };
+      const { days, offset } = monthDays(monsterMonth, _monsterData);
+      const selected = days.find((d) => d.date === monsterSelected) || null;
+
+      const stats = buildMedEffect(mood, courses) + buildMonthsOverview(mood) +
+        buildTagStats(mood) + buildComparisons(mood, bleeding);
+      const estimated = mood.filter((m) => m.estimated).length;
 
       monsterContent.innerHTML =
-        buildTimeline(_monsterDays) +
+        buildCalendar(monsterMonth, days, offset) +
         buildDayDetail(selected) +
-        // Jämförelserna räknas bara på det hon själv har loggat.
-        buildComparisons(mood.filter((m) => !m.estimated), bleeding) +
+        buildMonthTiles(monsterMonth, days) +
+        (stats
+          ? stats + '<p class="hint" style="margin:12px 4px 0">En tung dag = snittet av ' +
+            "dagens skattningar är minst 3,5 av 5. Det här visar samband i loggningen, " +
+            "inte vad som orsakar vad." +
+            (estimated ? " " + estimated + " av " + dagar(mood.length) +
+              " är uppskattade i efterhand från anteckningar." : "") + "</p>"
+          : '<div class="card"><p class="hint" style="margin:0">När det finns fler ' +
+            "loggade dagar visas statistik här.</p></div>") +
         '<div class="card"><strong>Till läkarbesöket</strong>' +
         '<p class="hint" style="margin-top:6px">En tabell med varje dag i den ' +
         "valda perioden, att skriva ut eller spara som PDF.</p>" +
+        '<div class="dose-group">' + MONSTER_PERIODS.map((n) =>
+          '<button type="button" class="dose-opt' + (n === monsterDays ? " selected" : "") +
+          '" data-days="' + n + '">' + n + " dagar</button>").join("") + "</div>" +
         '<button type="button" class="btn" data-act="print">Skriv ut ' +
         monsterDays + " dagar</button></div>";
     }
 
     monsterContent.addEventListener("click", async (e) => {
+      const nav = e.target.closest("[data-month]");
+      if (nav) {
+        monsterMonth = shiftMonth(monsterMonth, Number(nav.dataset.month));
+        monsterSelected = null;
+        await renderMonster();
+        return;
+      }
+      const metric = e.target.closest("[data-metric]");
+      if (metric) {
+        monsterMetric = metric.dataset.metric;
+        // Behåll radens sidledsläge så att valet inte hoppar ur bild.
+        const x = metric.parentElement.scrollLeft;
+        await renderMonster();
+        const row = monsterContent.querySelector(".cal-metrics");
+        if (row) row.scrollLeft = x;
+        return;
+      }
       const period = e.target.closest("[data-days]");
       if (period) {
         monsterDays = Number(period.dataset.days);
         await renderMonster();
         return;
       }
-      const cell = e.target.closest(".pt-cell");
+      const cell = e.target.closest(".cal-day");
       if (cell) {
         monsterSelected = monsterSelected === cell.dataset.date ? null : cell.dataset.date;
         await renderMonster();
@@ -3155,7 +3471,10 @@
       }
       const actEl = e.target.closest("[data-act]");
       if (!actEl) return;
-      if (actEl.dataset.act === "print") printReport(_monsterDays);
+      if (actEl.dataset.act === "print" && _monsterData) {
+        const d = _monsterData;
+        printReport(collectDays(monsterDays, d.mood, d.bleeding, d.meds, d.courses, d.packDates));
+      }
       if (actEl.dataset.act === "open-day" && monsterSelected) {
         await loadMoodForDate(monsterSelected);
         showView("maende", "Mående");
@@ -3200,6 +3519,9 @@
       : null;
 
     let syncUser = null;       // inloggad användare (eller null)
+    let partnerMode = false;   // inloggad som den som får en ÖVERSIKT (ingen egen dagbok)
+    let partnerData = null;    // senast hämtade översikt (se supabase/notiser.sql)
+    let partnerMonth = todayISO().slice(0, 7);
     let _syncRunning = false;  // lås: bara en synk åt gången
     let _syncAgain = false;    // någon bad om synk medan en redan körde
     let _syncTimer = null;
@@ -3219,7 +3541,7 @@
 
     // Be om en synk strax (samlar ihop flera sparningar till en körning).
     function scheduleSync() {
-      if (!sb || !syncUser) return;
+      if (!sb || !syncUser || partnerMode) return;
       clearTimeout(_syncTimer);
       _syncTimer = setTimeout(sync, 1500);
     }
@@ -3322,7 +3644,7 @@
 
     // Kör en hel synk (hämta, sedan skicka). Tyst vid fel: försöker igen senare.
     async function sync() {
-      if (!sb || !syncUser) return;
+      if (!sb || !syncUser || partnerMode) return;
       if (_syncRunning) { _syncAgain = true; return; }
       _syncRunning = true;
       try {
@@ -3385,8 +3707,242 @@
     });
 
     document.getElementById("btn-sync-logout").addEventListener("click", async () => {
-      if (!confirm("Logga ut? Dagboken ligger kvar på telefonen men slutar synkas.")) return;
+      if (!confirm(partnerMode
+        ? "Logga ut?"
+        : "Logga ut? Dagboken ligger kvar på telefonen men slutar synkas.")) return;
+      await disableNotis();   // notiserna hör till kontot
       await sb.auth.signOut();
+    });
+
+    /* --- Notiser (Web Push) ---
+       Telefonen prenumererar hos Apples/Googles push-tjänst och sparar
+       prenumerationen i tabellen push_subscriptions. Servern (Edge Function
+       "daglig-koll") skickar sedan notiserna. Den PUBLIKA VAPID-nyckeln får
+       ligga i koden; den hemliga finns bara i Supabase. På iPhone fungerar det
+       här bara när appen är tillagd på hemskärmen. Se
+       supabase/NOTISER-UPPSATTNING.md. */
+    const VAPID_PUBLIC_KEY = "";
+
+    function urlB64ToUint8Array(b64) {
+      const pad = "=".repeat((4 - (b64.length % 4)) % 4);
+      const raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+      return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+    }
+
+    async function currentPushSub() {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) return null;
+      const reg = await navigator.serviceWorker.getRegistration();
+      return reg ? reg.pushManager.getSubscription() : null;
+    }
+
+    async function renderNotisUI(msg) {
+      const st = document.getElementById("notis-status");
+      const on = document.getElementById("btn-notis-on");
+      const off = document.getElementById("btn-notis-off");
+      on.hidden = off.hidden = true;
+      if (!sb || !VAPID_PUBLIC_KEY) { st.textContent = "Notiser är inte inställda ännu."; return; }
+      if (!syncUser) { st.textContent = "Logga in för att kunna få notiser."; return; }
+      if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+        st.textContent = "Lägg till appen på hemskärmen och öppna den därifrån för att kunna få notiser.";
+        return;
+      }
+      if (Notification.permission === "denied") {
+        st.textContent = "Notiser är avstängda för appen i telefonens inställningar.";
+        return;
+      }
+      let sub = null;
+      try { sub = await currentPushSub(); } catch (_) { /* räknas som av */ }
+      if (sub) {
+        st.textContent = msg || "Notiser är på för den här telefonen.";
+        off.hidden = false;
+      } else {
+        st.textContent = msg || (partnerMode
+          ? "Få en notis när det kan vara på väg en tyngre period."
+          : "Få påminnelser om medicin och loggning, och en notis när appen känner igen mönstret.");
+        on.hidden = false;
+      }
+    }
+
+    async function enableNotis() {
+      try {
+        if ((await Notification.requestPermission()) !== "granted") { await renderNotisUI(); return; }
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC_KEY),
+        });
+        const j = sub.toJSON();
+        const { error } = await sb.from("push_subscriptions").upsert(
+          { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth },
+          { onConflict: "endpoint" });
+        if (error) { await sub.unsubscribe(); throw error; }
+        await renderNotisUI();
+      } catch (err) {
+        console.warn("Kunde inte slå på notiser:", err);
+        await renderNotisUI("Kunde inte slå på notiser just nu. Försök igen senare.");
+      }
+    }
+
+    // Stäng av på den här enheten (tyst om något går fel – t.ex. offline).
+    async function disableNotis() {
+      try {
+        const sub = await currentPushSub();
+        if (!sub) return;
+        if (sb && syncUser) await sb.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+        await sub.unsubscribe();
+      } catch (err) {
+        console.warn("Kunde inte stänga av notiser:", err);
+      }
+    }
+
+    document.getElementById("btn-notis-on").addEventListener("click", enableNotis);
+    document.getElementById("btn-notis-off").addEventListener("click", async () => {
+      await disableNotis();
+      await renderNotisUI();
+    });
+
+    // En notis (eller en länk med #vy) öppnar rätt vy.
+    function openViewByName(view) {
+      if (partnerMode) { showView("partner", "Översikt"); return; }
+      const tab = document.querySelector('.tab[data-view="' + view + '"]:not(.partner-only)');
+      if (tab) showView(view, tab.dataset.title);
+    }
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.addEventListener("message", (e) => {
+        if (e.data && e.data.type === "open-view") openViewByName(e.data.view);
+      });
+    }
+    if (location.hash.length > 1) {
+      const wanted = location.hash.slice(1);
+      history.replaceState(null, "", location.pathname + location.search);
+      setTimeout(() => openViewByName(wanted), 0);
+    }
+
+    /* --- Partnerläge ---
+       Den som står som "viewer" i tabellen shares får ingen dagbok utan en
+       ÖVERSIKT: en nivå per dag, medicindagar, omgångar och den senaste
+       signalen. Allt kommer från databasfunktionen partner_overview(), som
+       aldrig lämnar ut anteckningar, snabbval eller enskilda skattningar.
+       Översikten sparas inte i IndexedDB – bara en kopia i localStorage så att
+       den går att öppna utan nät. */
+    function enterPartnerMode() {
+      partnerMode = true;
+      document.body.classList.add("partner");
+      if (currentView !== "installningar") showView("partner", "Översikt");
+    }
+    function exitPartnerMode() {
+      localStorage.removeItem("partner-user");
+      localStorage.removeItem("partner-cache");
+      if (!partnerMode) return;
+      partnerMode = false;
+      partnerData = null;
+      document.body.classList.remove("partner");
+      showView("idag", "Idag");
+    }
+
+    // Avgör om den inloggade är partner, och hämta i så fall översikten.
+    async function checkPartner() {
+      if (localStorage.getItem("partner-user") === syncUser.id) {
+        try { partnerData = JSON.parse(localStorage.getItem("partner-cache")); } catch (_) {}
+        enterPartnerMode();
+      }
+      try {
+        const { data, error } = await sb.rpc("partner_overview");
+        if (error) throw error;
+        if (data && data.owner) {
+          partnerData = data;
+          localStorage.setItem("partner-user", syncUser.id);
+          localStorage.setItem("partner-cache", JSON.stringify(data));
+          if (partnerMode) renderPartner(); else enterPartnerMode();
+        } else {
+          exitPartnerMode();
+        }
+      } catch (err) {
+        // Funktionen saknas (inte uppsatt än) eller inget nät: behåll läget.
+        console.warn("Kunde inte hämta översikten:", err);
+      }
+    }
+
+    function renderPartner() {
+      const el = document.getElementById("partner-content");
+      const d = partnerData;
+      if (!d) {
+        el.innerHTML = '<div class="card"><p class="hint" style="margin:0">Hämtar översikten …</p></div>';
+        return;
+      }
+      const today = todayISO();
+      const courses = d.courses || [];
+      const active = courses.find((c) => c.active) || null;
+      const dayBy = new Map((d.days || []).map((x) => [x.date, x]));
+      const daysBetween = (a, b) =>
+        Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 864e5);
+      let html = "";
+
+      // Signalen: bara den korta raden som är skriven för partnern.
+      const s = d.signal;
+      if (s && s.dags && s.text_partner && s.date >= shiftDate(today, -2) && !active) {
+        html += '<div class="card"><div class="support-title">Det kan vara dags 💗</div>' +
+          '<p class="status-sub" style="margin:6px 0 0">' + escapeHTML(s.text_partner) + "</p>" +
+          '<p class="hint" style="margin-top:8px">' + fmtLong(s.date) + "</p></div>";
+      }
+
+      html += '<div class="card"><div class="status-eyebrow">Medicin</div>';
+      if (active) {
+        const taken = dayBy.get(today) && dayBy.get(today).med;
+        html += '<div class="support-title" style="margin-top:6px">Omgång pågår – dag ' +
+          (daysBetween(active.startdatum, today) + 1) + "</div>" +
+          '<p class="status-sub" style="margin:6px 0 0">' +
+          (taken ? "Tagen idag ✓" : "Inte bockad idag ännu.") + "</p>";
+      } else {
+        const last = courses.map((c) => c.slutdatum).filter(Boolean).sort().pop();
+        html += '<p class="status-sub" style="margin:8px 0 0">Ingen omgång pågår just nu.' +
+          (last ? " Den senaste slutade " + fmtLong(last) + " (" +
+            dagar(daysBetween(last, today)) + " sedan)." : "") + "</p>";
+      }
+      html += "</div>";
+
+      const first = new Date(partnerMonth + "-01T00:00:00");
+      const n = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+      const days = Array.from({ length: n }, (_, i) => {
+        const date = partnerMonth + "-" + String(i + 1).padStart(2, "0");
+        const x = dayBy.get(date);
+        return {
+          date,
+          level: x && x.level != null ? Number(x.level) : null,
+          med: !!(x && x.med),
+          inCourse: courses.some((c) => date >= c.startdatum && date <= (c.slutdatum || today)),
+        };
+      });
+      html += buildCalendar(partnerMonth, days, (first.getDay() + 6) % 7, true);
+
+      const past = days.filter((x) => x.date <= today);
+      const classes = past.map((x) => levelClass(x.level));
+      const tile = (v, label) => '<div class="tile"><b>' + v + "</b><span>" + label + "</span></div>";
+      html += '<div class="card"><div class="status-eyebrow" style="color:var(--muted)">' +
+        monthTitle(partnerMonth) + " i korthet</div>" + '<div class="tiles">' +
+        tile(past.filter((x) => x.level != null).length + " av " + past.length, "dagar loggade") +
+        tile(classes.filter((c) => c === "tung").length, "tunga dagar") +
+        tile(classes.filter((c) => c === "latt").length, "lätta dagar") +
+        tile(past.filter((x) => x.med).length, "dagar med medicin") + "</div></div>";
+
+      html += '<p class="hint" style="margin:12px 4px 0">Du ser en översikt: hur tung varje ' +
+        "dag har varit och när medicinen tagits. Det hon skriver och de enskilda " +
+        "skattningarna visas inte här.</p>" +
+        '<button type="button" class="btn secondary" data-act="partner-refresh">Uppdatera</button>';
+      el.innerHTML = html;
+    }
+
+    document.getElementById("partner-content").addEventListener("click", async (e) => {
+      const nav = e.target.closest("[data-month]");
+      if (nav) {
+        partnerMonth = shiftMonth(partnerMonth, Number(nav.dataset.month));
+        renderPartner();
+        return;
+      }
+      if (e.target.closest('[data-act="partner-refresh"]')) {
+        await checkPartner();
+        showToast("Uppdaterat ✓");
+      }
     });
 
     if (sb) {
@@ -3397,14 +3953,23 @@
         syncUser = user;
         if (wasSameUser) return; // bara en förnyad nyckel – inget att göra
         // Supabase-anrop får inte göras direkt i den här återkopplingen.
-        setTimeout(() => {
+        setTimeout(async () => {
           renderSyncUI();
-          if (syncUser) sync(); else setSyncStatus("");
+          if (!syncUser) {
+            setSyncStatus("");
+            exitPartnerMode();
+            renderNotisUI();
+            return;
+          }
+          await checkPartner();   // partner → översikt i stället för dagbok
+          renderNotisUI();
+          if (!partnerMode) sync();
         }, 0);
       });
       window.addEventListener("online", () => scheduleSync());
     }
     renderSyncUI();
+    renderNotisUI();
 
     /* --- När appen kommer tillbaka i förgrunden ---
        En app på hemskärmen laddas inte om, den fortsätter där den var. Om
@@ -3421,6 +3986,7 @@
       }
       refreshCurrentView();
       scheduleSync();
+      if (partnerMode && syncUser) checkPartner();
     });
 
     // Be webbläsaren att inte rensa lagringen när utrymmet tryter.

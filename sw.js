@@ -8,7 +8,7 @@
  * av filerna nedan, annars fortsätter den gamla cachade versionen att serveras.
  */
 
-const CACHE_NAME = "antonia-dagbok-v13";
+const CACHE_NAME = "antonia-dagbok-v16";
 
 // Filer som ska finnas tillgängliga offline.
 const PRECACHE_URLS = [
@@ -74,6 +74,41 @@ self.addEventListener("fetch", (event) => {
           // Helt offline och inget i cachen: fall tillbaka på appens skal.
           if (request.mode === "navigate") return caches.match("./index.html");
         });
+    })
+  );
+});
+
+// Notis från servern (Web Push). Innehållet är JSON: { title, body, view }.
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (_) {
+    data = { body: event.data ? event.data.text() : "" };
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || "Antonias dagbok", {
+      body: data.body || "",
+      icon: "icons/icon-192.png",
+      badge: "icons/icon-192.png",
+      data: { view: data.view || "idag" },
+    })
+  );
+});
+
+// Tryck på notisen: lyft fram appen (eller öppna den) på rätt vy.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const view = (event.notification.data && event.notification.data.view) || "idag";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      for (const client of list) {
+        if ("focus" in client) {
+          client.postMessage({ type: "open-view", view });
+          return client.focus();
+        }
+      }
+      return self.clients.openWindow("./#" + view);
     })
   );
 });
