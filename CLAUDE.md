@@ -57,6 +57,19 @@ courses. Later sections in the script: (e) Mående, (f) Medicin, (g) Blödningar
 (timeline per day, simple comparisons, printable report). There is also a fifth
 store, `notes` (`keyPath: "key"`). Settings is opened from the gear in the header.
 
+Things that live in existing stores rather than their own:
+
+- `mood` records may carry `tags` (ids from `MOOD_TAGS`, the "Snabbval" chips)
+  and `estimated: true` (scores entered afterwards from her old notes; shown
+  as such, excluded from the comparisons, cleared when she saves the day).
+- `notes` keys: `helps` (support card), `avoid` (the "Undvik" list on Idag) and
+  `ppiller:YYYY-MM-DD` (one per started contraceptive pill pack).
+- Scales where a high value means more trouble are drawn mirrored in the
+  Mående view so the positive end is always on the right. Only the display is
+  flipped; stored values keep their meaning.
+- Settings has two imports: "Importera" **replaces** everything, "Lägg till
+  från fil" (`mergeAll`) only adds what is missing and never overwrites.
+
 ## Sync (section i)
 
 - Server: one generic table `records (user_id, store, key, data jsonb,
