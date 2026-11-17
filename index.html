@@ -5029,7 +5029,7 @@
       const dayBy = new Map((d.days || []).map((x) => [x.date, x]));
       let html = "";
 
-      // Idag: bara hur dagen är, i ett lugnt kort. Inget om att hon "borde" ha loggat.
+      // Idag: bara hur dagen är, i ett lugnt kort. Loggat idag eller inte; annars senaste loggade dagen och hur den var.
       const todayRec = dayBy.get(today);
       const todayCls = todayRec && todayRec.level != null ? levelClass(Number(todayRec.level)) : null;
       const todayInfo = {
@@ -5039,11 +5039,26 @@
       }[todayCls];
       html += '<div class="card"><div class="status-eyebrow">Idag</div>';
       if (todayInfo) {
-        html += '<div class="partner-today"><span class="partner-dot ' + todayCls + '"></span>' +
+        html += '<p class="status-sub" style="margin:6px 0 0">Loggat idag ✓</p>' +
+          '<div class="partner-today"><span class="partner-dot ' + todayCls + '"></span>' +
           '<span class="partner-today-text">' + todayInfo[0] + "</span></div>";
         if (todayInfo[1]) html += '<p class="status-sub" style="margin:8px 0 0">' + todayInfo[1] + "</p>";
       } else {
-        html += '<p class="status-sub" style="margin:8px 0 0">Ingen uppdatering för idag än.</p>';
+        html += '<p class="status-sub" style="margin:6px 0 0">Inte loggat idag än.</p>';
+        // Senaste loggade dagen före idag, och hur den var.
+        const last = (d.days || [])
+          .filter((x) => x.date < today && x.level != null)
+          .reduce((a, x) => (!a || x.date > a.date ? x : a), null);
+        if (last) {
+          const cls = levelClass(Number(last.level));
+          const word = { tung: "en tyngre dag", mellan: "en okej dag", latt: "en bra dag" }[cls];
+          const ago = Math.round((new Date(today + "T00:00:00") - new Date(last.date + "T00:00:00")) / 864e5);
+          const when = ago === 1 ? "Igår" : ago === 2 ? "I förrgår" : dagar(ago) + " sedan";
+          html += '<div class="partner-today"><span class="partner-dot ' + (cls || "") + '"></span>' +
+            '<span class="partner-today-text" style="font-size:1.1rem">' + when + ": " +
+            (word || "loggat") + "</span></div>" +
+            '<p class="hint" style="margin:6px 0 0">Senast loggat ' + fmtLong(last.date) + "</p>";
+        }
       }
       html += "</div>";
 
