@@ -34,7 +34,7 @@ import {
   stockholmNow,
 } from "./logic.ts";
 
-const MODEL = "claude-opus-5-5";
+const MODEL = "claude-sonnet-5-5";
 const AI_DAYS = 150;
 const PUSH_TTL_SECONDS = 6 * 60 * 60; // en påminnelse är värdelös efter några timmar
 const SIGNAL_COOLDOWN_DAYS = 4;
@@ -254,8 +254,8 @@ async function askClaude(client: Anthropic, rows: RecordRow[], today: string): P
   const res = await client.beta.messages.create({
     model: MODEL,
     max_tokens: 16000,
-    // Opus 5.5: tänkandet är alltid på (thinking utelämnas); djupet styrs av effort.
-    output_config: { effort: "high", format: { type: "json_schema", schema: OUTPUT_SCHEMA } },
+    // Sonnet 5.5: thinking utelämnas (adaptivt); djupet styrs av effort (medium räcker här).
+    output_config: { effort: "medium", format: { type: "json_schema", schema: OUTPUT_SCHEMA } },
     // Vägrar modellens säkerhetsklassificerare körs samma anrop om på en annan modell.
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",

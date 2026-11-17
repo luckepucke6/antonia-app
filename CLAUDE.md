@@ -118,6 +118,23 @@ Setup steps (VAPID keys, Edge Function, schedule) are in
   IndexedDB; the overview is cached in `localStorage` (`partner-user`,
   `partner-cache`) for offline use, and `sync()` is skipped while in partner mode.
 
+## Demo mode (developer)
+
+- `localStorage` `dev-demo` = `"1"` turns on demo mode (`DEMO_MODE`). It uses a
+  **separate IndexedDB** (`antonia-dagbok-demo`) filled by `seedDemo()` with ~60
+  days of made-up data, never syncs (`sync()`/`scheduleSync()` return early),
+  never runs `checkPartner()` (so `body.partner` is never applied), and does
+  not subscribe to push. A banner "Demoläge – påhittad data" with "Avsluta" is
+  shown (`body.demo`).
+- Settings has an "Utvecklare" card (visible in partner mode or demo mode) with
+  "Visa hennes app (demo)", "Avsluta demo" and "Återställ demodata".
+- `partner_overview()` also returns `areas7` = `{ kanslor, kropp, somn, logged }`:
+  aggregated 7-day averages per area (1–5 heaviness scale, one decimal, null if
+  none) and the number of logged days. Never per-day area values (that would leak
+  single ratings). The partner view shows them as bars plus a trend line
+  (`partnerTrend`); without `areas7` (old cache/SQL) only the trend line shows.
+- The Edge Function `daglig-koll` runs `claude-sonnet-5-5` at effort medium.
+
 ## Critical gotchas
 
 - **Bump `CACHE_NAME` in `sw.js`** (`-v1` → `-v2` …) on *every* change to a
