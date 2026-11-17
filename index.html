@@ -312,7 +312,7 @@
     }
     .face {
       flex: 1;
-      font-size: 1.7rem;          /* gäller bara emojin (.face-text har egen storlek) */
+      font-size: 2.1rem;          /* gäller bara emojin (.face-text har egen storlek) */
       line-height: 1;
       display: flex;
       flex-direction: column;
@@ -325,23 +325,24 @@
       border-radius: 12px;
       cursor: pointer;
       -webkit-tap-highlight-color: transparent;
-      /* Oifyllt = dämpat, så det syns tydligt att inget är valt */
-      opacity: 0.4;
-      filter: grayscale(0.5);
+      /* Inget valt = full färg. Dämpning sker bara när en annan i raden är vald. */
+      opacity: 1;
       transform: scale(1);
       transition: opacity 0.18s ease, transform 0.18s ease,
                   background 0.18s ease, filter 0.18s ease;
     }
     .face.selected {
       opacity: 1;
-      filter: none;
       background: var(--accent-soft);
+      box-shadow: 0 0 0 2px var(--accent);   /* tydlig ring runt valet */
     }
+    /* När något är valt dämpas de andra i samma rad måttligt */
+    .faces:has(.face.selected) .face:not(.selected) { opacity: 0.45; }
     .face-emoji { display: inline-block; transition: transform 0.18s ease; }
     .face.selected .face-emoji { transform: scale(1.18); }
     /* Med text: dämpa bara emojin, så texten går att läsa även när den inte är vald */
-    .face:has(.face-text) { opacity: 1; filter: none; }
-    .face:has(.face-text):not(.selected) .face-emoji { opacity: 0.4; filter: grayscale(0.5); }
+    .faces:has(.face.selected) .face:has(.face-text):not(.selected) { opacity: 1; }
+    .faces:has(.face.selected) .face:has(.face-text):not(.selected) .face-emoji { opacity: 0.45; }
     .face-text {
       font-size: 0.62rem;
       line-height: 1.1;
@@ -443,7 +444,7 @@
       transform: translateX(-50%) translateY(0);
     }
     @media (prefers-reduced-motion: reduce) {
-      .face, .toast { transition: none; }
+      .face, .face-emoji, .toast { transition: none; }
       .view.active { animation: none; }
     }
 
@@ -1064,7 +1065,25 @@
       -webkit-tap-highlight-color: transparent;
     }
     .card-link:active { opacity: 0.85; }
+    /* Partnervyn: dagens nivå som en lugn prick + text */
+    .partner-today { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+    .partner-today-text { font-size: 1.35rem; font-weight: 650; line-height: 1.25; }
+    .partner-dot { flex: none; width: 18px; height: 18px; border-radius: 50%; background: var(--accent-soft); }
+    .partner-dot.tung { background: rgb(var(--tone-hi)); }
+    .partner-dot.mellan { background: rgba(var(--tone-hi), 0.5); }
+    .partner-dot.latt { background: rgba(var(--tone-hi), 0.32); }
     .card-link-arrow { flex: none; font-size: 1.3rem; color: var(--accent); }
+    /* Hopfällbar stödrad: summary ser ut som övriga diskreta rader. */
+    .support-fold > summary { list-style: none; display: block; }
+    /* Flex på ett inre element: äldre Safari klarar inte summary som flex-behållare. */
+    .support-fold .card-link-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .support-fold > summary::-webkit-details-marker { display: none; }
+    .support-fold > summary .card-link-arrow { transition: transform 0.18s ease; }
+    .support-fold[open] > summary .card-link-arrow { transform: rotate(90deg); }
+    .support-fold > .card { margin-top: 10px; }
+    @media (prefers-reduced-motion: reduce) {
+      .support-fold > summary .card-link-arrow { transition: none; }
+    }
 
     /* "Omgång pågår – dag X" – framträdande men inte gigantisk. */
     .idag-med-head {
@@ -3464,6 +3483,8 @@
        Egen lista "Det här hjälper mig" sparas i notes (key "helps"). */
     let supportOpen = false;     // öppnat för hand (visas även en bra dag)
     let supportEditing = false;  // redigerar den egna listan
+    let supportFoldDay = "";   // dagen valet gäller; en ny dag börjar alltid hopfälld
+    let supportFoldOpen = false; // stödraden är utfälld (kommer ihåg valet mellan omritningar)
 
     function escapeHTML(str) {
       return String(str).replace(/[<>&"]/g, (c) =>
@@ -3533,7 +3554,12 @@
           '<span class="card-link-arrow">›</span></button>';
       }
 
-      let html = '<div class="card">';
+      // Allt stöd ligger bakom en hopfälld rad som fälls ut vid tryck.
+      const foldTitle = low ? "💗 En tyngre period – det här kan hjälpa" : "💗 Stöd för tyngre dagar";
+      let html = '<details class="support-fold"' + (supportFoldOpen && supportFoldDay === todayISO() ? " open" : "") + ">" +
+        '<summary class="card-link"><span class="card-link-row"><span>' + foldTitle + "</span>" +
+        '<span class="card-link-arrow">›</span></span></summary>';
+      html += '<div class="card">';
       if (low) {
         html += '<div class="support-title">Det verkar vara en tyngre period just nu 💗</div>';
         html += '<p class="status-sub" style="margin:6px 0 0">Det du känner är ' +
@@ -3571,7 +3597,7 @@
 
       html += '<button type="button" class="btn secondary" data-act="support-close">' +
               (low && !supportOpen ? "Dölj för idag" : "Stäng") + "</button>";
-      return html + "</div>";
+      return html + "</div></details>";
     }
 
     /* --- "Känner du igen det här?" ---
@@ -3657,28 +3683,30 @@
         (welcomeBack ? "Välkommen tillbaka" : greetingFor(new Date())) + " 💗</div>";
       html += '<div class="greeting-date">' + dateStr + "</div>";
       const support = buildSupport(recentMood, (helps && helps.text) || "", today);
-      // En tung dag hamnar stödet överst, annars som en diskret länk längst ner.
-      const supportCard = !support.startsWith("<button");
-      // Stödet hamnar inte över snabbskalorna förrän de är klara, om det bara är
-      // idag som gör perioden tung (annars skulle kortet trycka ner skalorna).
-      const quickComplete = QUICK_KEYS.every((k) => moodRec && moodRec.scores && moodRec.scores[k] != null);
-      const afterQuick = supportCard && isLowPeriod(recentMood) && !quickComplete &&
-        !isLowPeriod([undefined, mood1, mood2]);
-      const supportFirst = supportCard && !afterQuick;
-      html += buildSignal(signal, courses, today);
-      if (supportFirst) html += support;
+      // Stödet är alltid hopfällt. En tyngre period: raden ligger direkt under
+      // snabbloggningen så den är lätt att hitta. Annars: diskret rad längst ner.
+      const supportFold = support.startsWith("<details");
+      const supportTop = supportFold && isLowPeriod(recentMood);
       html += buildIdagMood(moodRec);
-      if (afterQuick) html += support;
+      if (supportTop) html += support;
+      html += buildSignal(signal, courses, today);
       html += buildIdagMed(courses, meds, today);
-      // Diskreta rader längst ner: blödning, undvik, stöd.
+      // Diskreta rader längst ner: uppehåll, blödning, undvik, stöd.
       html += buildIdagPause(pauses, today);
       html += buildIdagBleed(bleed, today);
       html += buildAvoid((avoid && avoid.text) || "");
-      if (!supportCard) html += support;   // bara den diskreta länken
+      if (!supportTop) html += support;
       quickFlash = false;
 
       idagContent.innerHTML = html;
     }
+
+    // Kom ihåg om stödraden är öppen (toggle bubblar inte, därför capture).
+    idagContent.addEventListener("toggle", (e) => {
+      if (e.target.classList && e.target.classList.contains("support-fold")) {
+        supportFoldOpen = e.target.open; supportFoldDay = todayISO();
+      }
+    }, true);
 
     // Delegerad klick-hantering (sätts en gång; innehållet byts ut vid render).
     idagContent.addEventListener("click", async (e) => {
@@ -3711,12 +3739,14 @@
           break;
         case "support-open":
           supportOpen = true;
+          supportFoldOpen = true; supportFoldDay = todayISO();             // visa innehållet direkt efter tryck
           await renderIdag();
           break;
         case "support-close":
           // Öppnat för hand → bara stäng. Visat automatiskt → dölj resten av dagen.
           if (!supportOpen) localStorage.setItem(lsKey("support-hidden"), todayISO());
           supportOpen = false;
+          supportFoldOpen = false; supportFoldDay = todayISO();
           supportEditing = false;
           await renderIdag();
           break;
@@ -4460,7 +4490,6 @@
     let syncUser = null;       // inloggad användare (eller null)
     let partnerMode = false;   // inloggad som den som får en ÖVERSIKT (ingen egen dagbok)
     let partnerData = null;    // senast hämtade översikt (se supabase/notiser.sql)
-    let partnerMonth = todayISO().slice(0, 7);
     let _syncRunning = false;  // lås: bara en synk åt gången
     let _syncAgain = false;    // någon bad om synk medan en redan körde
     let _syncTimer = null;
@@ -4987,34 +5016,6 @@
       }
     }
 
-    // Trend: jämför senaste veckan (idag och 6 dagar bakåt) med veckan före.
-    // Returnerar { arrow, text }.
-    function partnerTrend(days, today) {
-      const byDate = new Map((days || []).map((x) => [x.date, x]));
-      // Samla numeriska nivåer (1–5, högre = tyngre) för en veckas sju datum.
-      const weekLevels = (fromOffset) => {
-        const out = [];
-        for (let i = fromOffset; i < fromOffset + 7; i++) {
-          const x = byDate.get(shiftDate(today, -i));
-          if (x && x.level != null && !isNaN(Number(x.level))) out.push(Number(x.level));
-        }
-        return out;
-      };
-      const thisWeek = weekLevels(0);   // today-6 .. today
-      const lastWeek = weekLevels(7);   // today-13 .. today-7
-      // Minst tre loggade dagar per vecka, annars säger jämförelsen för lite.
-      const MIN_DAYS = 3;
-      // Skillnader under 0,4 på en 1–5-skala räknas som brus.
-      const THRESHOLD = 0.4;
-      if (thisWeek.length < MIN_DAYS) return { arrow: "·", text: "För lite loggat den här veckan för att se en trend" };
-      if (lastWeek.length < MIN_DAYS) return { arrow: "·", text: "För lite loggat förra veckan för att jämföra" };
-      const avg = (a) => a.reduce((s, v) => s + v, 0) / a.length;
-      const diff = avg(thisWeek) - avg(lastWeek);   // negativt = lättare (lägre = lättare)
-      if (diff <= -THRESHOLD) return { arrow: "↓", text: "Lättare än förra veckan" };
-      if (diff >= THRESHOLD) return { arrow: "↑", text: "Tyngre än förra veckan" };
-      return { arrow: "→", text: "Ungefär som förra veckan" };
-    }
-
     function renderPartner() {
       const el = document.getElementById("partner-content");
       const d = partnerData;
@@ -5026,9 +5027,25 @@
       const courses = d.courses || [];
       const active = courses.find((c) => c.active) || null;
       const dayBy = new Map((d.days || []).map((x) => [x.date, x]));
-      const daysBetween = (a, b) =>
-        Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 864e5);
       let html = "";
+
+      // Idag: bara hur dagen är, i ett lugnt kort. Inget om att hon "borde" ha loggat.
+      const todayRec = dayBy.get(today);
+      const todayCls = todayRec && todayRec.level != null ? levelClass(Number(todayRec.level)) : null;
+      const todayInfo = {
+        tung: ["En tyngre dag idag", "Var lite extra snäll mot henne idag 💗"],
+        mellan: ["En okej dag idag", ""],
+        latt: ["En bra dag idag", ""],
+      }[todayCls];
+      html += '<div class="card"><div class="status-eyebrow">Idag</div>';
+      if (todayInfo) {
+        html += '<div class="partner-today"><span class="partner-dot ' + todayCls + '"></span>' +
+          '<span class="partner-today-text">' + todayInfo[0] + "</span></div>";
+        if (todayInfo[1]) html += '<p class="status-sub" style="margin:8px 0 0">' + todayInfo[1] + "</p>";
+      } else {
+        html += '<p class="status-sub" style="margin:8px 0 0">Ingen uppdatering för idag än.</p>';
+      }
+      html += "</div>";
 
       // Signalen: bara den korta raden som är skriven för partnern.
       const s = d.signal;
@@ -5050,68 +5067,6 @@
           '<div class="partner-helps">' + escapeHTML(d.helps) + "</div></div>";
       }
 
-      html += '<div class="card"><div class="status-eyebrow">Medicin</div>';
-      if (active) {
-        const taken = dayBy.get(today) && dayBy.get(today).med;
-        html += '<div class="support-title" style="margin-top:6px">Omgång pågår – dag ' +
-          (daysBetween(active.startdatum, today) + 1) + "</div>" +
-          '<p class="status-sub" style="margin:6px 0 0">' +
-          (taken ? "Tagen idag ✓" : "Inte bockad idag ännu.") + "</p>";
-      } else {
-        const last = courses.map((c) => c.slutdatum).filter(Boolean).sort().pop();
-        html += '<p class="status-sub" style="margin:8px 0 0">Ingen omgång pågår just nu.' +
-          (last ? " Den senaste slutade " + fmtLong(last) + " (" +
-            dagar(daysBetween(last, today)) + " sedan)." : "") + "</p>";
-      }
-      html += "</div>";
-
-      // Senaste 7 dagarna: trendrad + tre staplar (snitt per område).
-      html += '<div class="card"><div class="status-eyebrow">Senaste 7 dagarna</div>';
-      const trend = partnerTrend(d.days || [], today);
-      html += '<p class="status-sub" style="margin:8px 0 0"><b style="font-size:1.3rem">' +
-        trend.arrow + "</b> " + escapeHTML(trend.text) + "</p>";
-      // Staplar: bara om servern skickat de sammanlagda 7-dagarssnitten (areas7).
-      const a7 = d.areas7;
-      if (a7 && typeof a7 === "object") {
-        [["kanslor", "Känslor"], ["kropp", "Kropp"], ["somn", "Sömn"]].forEach(([key, label]) => {
-          if (a7[key] == null) {
-            html += barRowHTML(label, "–", 0, "");
-            return;
-          }
-          const m = Number(a7[key]);   // 1–5, högre = tyngre
-          const cls = levelClass(m);
-          const word = cls === "tung" ? "tung" : cls === "latt" ? "lätt" : "medel";
-          html += barRowHTML(label, word, (m - 1) / 4, "");
-        });
-        // Antal loggade dagar visas en gång för alla staplar.
-        html += '<p class="hint" style="margin:8px 0 0">' + (a7.logged || 0) + " av 7 dagar loggade</p>";
-      }
-      html += "</div>";
-
-      const first = new Date(partnerMonth + "-01T00:00:00");
-      const n = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
-      const days = Array.from({ length: n }, (_, i) => {
-        const date = partnerMonth + "-" + String(i + 1).padStart(2, "0");
-        const x = dayBy.get(date);
-        return {
-          date,
-          level: x && x.level != null ? Number(x.level) : null,
-          med: !!(x && x.med),
-          inCourse: courses.some((c) => date >= c.startdatum && date <= (c.slutdatum || today)),
-        };
-      });
-      html += buildCalendar(partnerMonth, days, (first.getDay() + 6) % 7, true);
-
-      const past = days.filter((x) => x.date <= today);
-      const classes = past.map((x) => levelClass(x.level));
-      const tile = (v, label) => '<div class="tile"><b>' + v + "</b><span>" + label + "</span></div>";
-      html += '<div class="card"><div class="status-eyebrow" style="color:var(--muted)">' +
-        monthTitle(partnerMonth) + " i korthet</div>" + '<div class="tiles">' +
-        tile(past.filter((x) => x.level != null).length + " av " + past.length, "dagar loggade") +
-        tile(classes.filter((c) => c === "tung").length, "tunga dagar") +
-        tile(classes.filter((c) => c === "latt").length, "lätta dagar") +
-        tile(past.filter((x) => x.med).length, "dagar med medicin") + "</div></div>";
-
       // Förslag från Antonia: öppna först, fixade i en fällbar lista.
       const fbs = Array.isArray(d.feedback) ? d.feedback : [];
       if (fbs.length) {
@@ -5132,9 +5087,8 @@
         html += "</div>";
       }
 
-      html += '<p class="hint" style="margin:12px 4px 0">Du ser en översikt: hur tung varje ' +
-        "dag har varit, en nivå per område (känslor, kropp, sömn) och när medicinen " +
-        "tagits. Det hon skriver och de enskilda skattningarna visas inte här. " +
+      html += '<p class="hint" style="margin:12px 4px 0">Du ser bara kort hur dagen är idag. ' +
+        "Det hon skriver och hennes enskilda skattningar visas inte här. " +
         "Det enda undantaget är 'Det här brukar hjälpa henne', som visas bara om hon " +
         "själv valt att dela det och bara när det verkar vara en tyngre period. " +
         "Hennes förslag på förbättringar visas också.</p>" +
@@ -5143,12 +5097,6 @@
     }
 
     document.getElementById("partner-content").addEventListener("click", async (e) => {
-      const nav = e.target.closest("[data-month]");
-      if (nav) {
-        partnerMonth = shiftMonth(partnerMonth, Number(nav.dataset.month));
-        renderPartner();
-        return;
-      }
       // Markera ett förslag som klart (eller ångra).
       const fbBtn = e.target.closest('[data-act="fb-done"], [data-act="fb-undo"]');
       if (fbBtn) {

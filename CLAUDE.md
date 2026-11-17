@@ -58,6 +58,12 @@ courses. Later sections in the script: (e) Mående, (f) Medicin, (g) Blödningar
 of "heavy days" — see `dayClass` — and a printable report). There is also a fifth
 store, `notes` (`keyPath: "key"`). Settings is opened from the gear in the header.
 
+Idag order (`renderIdag`): greeting + date -> quick logging -> (on a heavy period
+the collapsed support row `<details class="support-fold">`, state in
+`supportFoldOpen`) -> signal card -> medicine -> discrete rows (pause, bleeding,
+avoid) -> support row (collapsed, at the bottom when it is not a heavy period).
+Support content is never shown expanded by default.
+
 Things that live in existing stores rather than their own:
 
 - `mood` records may carry `tags` (ids from `MOOD_TAGS`, the "Snabbval" chips)
@@ -158,7 +164,12 @@ Setup steps (VAPID keys, Edge Function, schedule) are in
 - **Partner mode**: if the logged-in user is a `viewer` in `shares`,
   `checkPartner()` fetches a limited overview via the RPC `partner_overview()`
   (a level per day, medication days, courses, `text_partner`) — never notes,
-  tags or individual scores. Body class `partner` swaps the tab bar for one
+  tags or individual scores. The partner view itself now shows only: a short
+  "Idag" card (today's level: heavier / okay / good / "Ingen uppdatering"), the
+  signal card (`text_partner`) and the shared "helps" card (heavier period only),
+  plus her feedback. Medicine, 7-day trend/bars and the month calendar were removed
+  from the UI; the RPC still returns them (trimming `partner_overview()` is a
+  possible later SQL change). Body class `partner` swaps the tab bar for one
   "Översikt" tab (`view-partner`, `renderPartner`). Nothing goes into
   IndexedDB; the overview is cached in `localStorage` (`partner-user`,
   `partner-cache`) for offline use, and `sync()` is skipped while in partner mode.
@@ -176,8 +187,7 @@ Setup steps (VAPID keys, Edge Function, schedule) are in
 - `partner_overview()` also returns `areas7` = `{ kanslor, kropp, somn, logged }`:
   aggregated 7-day averages per area (1–5 heaviness scale, one decimal, null if
   none) and the number of logged days. Never per-day area values (that would leak
-  single ratings). The partner view shows them as bars plus a trend line
-  (`partnerTrend`); without `areas7` (old cache/SQL) only the trend line shows.
+  single ratings). The partner view no longer displays them (kept in the RPC only).
 - The Edge Function `daglig-koll` runs `claude-sonnet-5-5` at effort medium.
 
 ## Critical gotchas
