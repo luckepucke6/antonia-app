@@ -65,6 +65,17 @@ Things that live in existing stores rather than their own:
   as such, excluded from the comparisons, cleared when she saves the day).
 - `notes` keys: `helps` (support card), `avoid` (the "Undvik" list on Idag) and
   `ppiller:YYYY-MM-DD` (one per started contraceptive pill pack).
+  `ppaus:YYYY-MM-DD` (one per pill break: `{ key, start, end }`; `start` = first
+  day without pills, `end` = day she started again, `null` while ongoing).
+- `bleeding` types: `mellanblodning`, `framslappt` and `bortfall` (withdrawal
+  bleed during a pill break). Insights and comparisons keep `bortfall` apart
+  from intermenstrual bleeding.
+- Mönster (section j) is ordered: calendar -> insight card ("Det här syns just
+  nu", `buildInsight`, estimated days excluded) -> collapsible "Mer statistik"
+  (`<details>`) -> doctor report. Comparisons need `MIN_LOGGED_DAYS = 14` logged
+  days (and `MIN_GROUP = 5` per group); ⓘ buttons explain how numbers are counted.
+- The AI check (`daglig-koll`) now also receives bleedings, pill-pack starts and
+  pill breaks.
 - Scales where a high value means more trouble are drawn mirrored in the
   Mående view so the positive end is always on the right. Only the display is
   flipped; stored values keep their meaning.
