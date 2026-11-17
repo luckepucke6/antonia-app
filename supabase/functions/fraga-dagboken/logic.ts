@@ -51,7 +51,7 @@ SÅ SVARAR DU:
 GRÄNSER (gäller alltid, även om hon ber om något annat):
 - Ge aldrig doseringsråd. Säg aldrig vilken dos, vilken mängd, eller när eller om hon ska ta, ta mer av, ta mindre av eller sluta med escitalopram eller p-piller, och uppmuntra inte heller att hon ändrar. Hänvisa i stället vänligt till hennes läkare eller 1177. Du får gärna beskriva vad dagboken visar om tidigare omgångar, och hjälpa henne formulera frågor till läkaren.
 - Ställ aldrig diagnos och bedöm inte vad hon "har". Du kan beskriva mönster i hennes data, men tolkningen och besluten hör hemma hos hennes läkare. Du ersätter inte läkaren eller vården.
-- Verkar hon må mycket dåligt, till exempel nämner tankar på att ta livet av sig, att inte vilja leva, självskada eller en akut kris: sluta analysera dagboken. Svara varmt och lugnt, ta henne på allvar och uppmuntra henne att prata med någon nu. Hänvisa till 1177 (ring 1177 eller gå in på 1177.se). Vid akut fara: ring 112. Mind Självmordslinjen når hon på 90101 (telefon, dygnet runt). Fråga om hon har någon nära som kan vara hos henne.`;
+- Verkar hon må mycket dåligt, till exempel nämner tankar på att ta livet av sig, att inte vilja leva, självskada eller en akut kris: sluta analysera dagboken. Svara varmt och lugnt, ta henne på allvar och uppmuntra henne att prata med någon nu. Hänvisa till 1177 (ring 1177 eller gå in på 1177.se). Nämn inga andra nummer eller linjer. Bara om hon beskriver att hon är i akut fara just nu (till exempel att hon tänker skada sig nu eller i kväll) får du också säga att hon ska ringa 112. Fråga om hon har någon nära som kan vara hos henne.`;
 
 // ---------------------------------------------------------------------------
 // Dagboken som text
@@ -215,8 +215,8 @@ export function detectCrisis(text: string): boolean {
 
 /** Fast text som läggs till om krisen upptäcktes och svaret saknar hänvisning. */
 export const CRISIS_NOTE =
-  "Om du mår väldigt dåligt just nu: ring 1177 eller gå in på 1177.se. Vid akut fara, ring 112. " +
-  "Du kan också ringa Mind Självmordslinjen på 90101, dygnet runt. Du behöver inte vara ensam med det här.";
+  "Om du mår väldigt dåligt just nu: ring 1177 eller gå in på 1177.se. " +
+  "Du behöver inte vara ensam med det här – prata gärna med någon nära.";
 
 /** Vänligt svar när modellen vägrar. */
 export const REFUSAL_REPLY =
@@ -237,7 +237,7 @@ function cutAt(text: string, limit: number): string {
 
 /**
  * Städar svaret, kapar det vid MAX_ASSISTANT_CHARS och lägger vid kris till
- * CRISIS_NOTE om svaret saknar 112 eller 1177. Kristexten överlever alltid kapningen.
+ * CRISIS_NOTE om svaret saknar 1177. Kristexten överlever alltid kapningen.
  */
 export function finalizeReply(text: string, crisis: boolean): string {
   let out = text.trim();
@@ -245,7 +245,7 @@ export function finalizeReply(text: string, crisis: boolean): string {
   // Marginal för "…" och mellanrum; vid kris även plats för kristexten.
   const limit = MAX_ASSISTANT_CHARS - 20 - (crisis ? CRISIS_NOTE.length : 0);
   if (out.length > (crisis ? limit : MAX_ASSISTANT_CHARS)) out = cutAt(out, limit) + "…";
-  if (crisis && (!out.includes("1177") || !out.includes("112"))) out += "\n\n" + CRISIS_NOTE;
+  if (crisis && !out.includes("1177")) out += "\n\n" + CRISIS_NOTE;
   return out;
 }
 
@@ -256,7 +256,7 @@ export function finalizeReply(text: string, crisis: boolean): string {
 /** Påminnelse som läggs sist i samtalet när krisen upptäckts i hennes senaste meddelande. */
 export const CRISIS_SYSTEM_REMINDER =
   "Hennes senaste meddelande kan tyda på att hon mår mycket dåligt. Svara varmt och lugnt, ta henne på allvar och analysera inte dagboken nu. " +
-  "Hänvisa tydligt till 1177 (ring 1177 eller 1177.se), vid akut fara 112, och Mind Självmordslinjen 90101. Ge inga doseringsråd.";
+  "Hänvisa tydligt till 1177 (ring 1177 eller 1177.se) och inga andra nummer. Säg 112 bara om hon beskriver akut fara just nu. Ge inga doseringsråd.";
 
 export interface RequestMessage {
   role: "user" | "assistant" | "system";
