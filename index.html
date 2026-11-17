@@ -1068,6 +1068,10 @@
     /* Partnervyn: dagens nivå som en lugn prick + text */
     .partner-today { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
     .partner-today-text { font-size: 1.35rem; font-weight: 650; line-height: 1.25; }
+    .partner-info { margin-top: 6px; }
+    .partner-info > summary { list-style: none; cursor: pointer; display: block; margin: 0; }
+    .partner-info > summary::-webkit-details-marker { display: none; }
+    .partner-info > summary .info-btn { display: inline-block; margin-left: 4px; }
     .partner-dot { flex: none; width: 18px; height: 18px; border-radius: 50%; background: var(--accent-soft); }
     .partner-dot.tung { background: rgb(var(--tone-hi)); }
     .partner-dot.mellan { background: rgba(var(--tone-hi), 0.5); }
@@ -5003,6 +5007,7 @@
             }
           } catch (_) { /* behåll tidigare */ }
           data.feedback = fb;
+          data.fetchedAt = new Date().toISOString();   // när översikten hämtades (visas i ⓘ)
           partnerData = data;
           localStorage.setItem("partner-user", syncUser.id);
           localStorage.setItem("partner-cache", JSON.stringify(data));
@@ -5014,6 +5019,34 @@
         // Funktionen saknas (inte uppsatt än) eller inget nät: behåll läget.
         console.warn("Kunde inte hämta översikten:", err);
       }
+    }
+
+    // Statusraden i partnerns Idag-kort, med ⓘ som visar tidpunkter så att man kan
+    // se att appen fungerar: när hon senast loggade (på telefonen), när det kom
+    // fram till servern, och när översikten hämtades. last_mood kommer från
+    // partner_overview() (supabase/partner-tid.sql); saknas det visas bara hämttiden.
+    let partnerInfoOpen = false;
+    function partnerStatusLine(text, d) {
+      const tid = (iso) => {
+        const t = iso ? new Date(iso) : null;
+        if (!t || isNaN(t)) return null;
+        return new Intl.DateTimeFormat("sv-SE", { weekday: "long", day: "numeric", month: "long" }).format(t) +
+          " kl. " + new Intl.DateTimeFormat("sv-SE", { hour: "2-digit", minute: "2-digit" }).format(t);
+      };
+      const rows = [];
+      const lm = d.last_mood;
+      if (lm && lm.date) {
+        rows.push("Senaste loggade dag: " + fmtLong(lm.date));
+        if (tid(lm.logged_at)) rows.push("Sparad på hennes telefon: " + tid(lm.logged_at));
+        if (tid(lm.synced_at)) rows.push("Kom fram till servern: " + tid(lm.synced_at));
+      }
+      rows.push(tid(d.fetchedAt) ? "Översikten hämtad: " + tid(d.fetchedAt)
+        : "Översikten är sparad sedan tidigare (inte hämtad nu).");
+      return '<details class="partner-info"' + (partnerInfoOpen ? " open" : "") + ">" +
+        '<summary class="status-sub">' + text + ' <span class="info-btn" aria-hidden="true">ⓘ</span>' +
+        '<span class="visually-hidden">Visa tidpunkter</span></summary>' +
+        rows.map((r) => '<p class="hint" style="margin:4px 0 0">' + escapeHTML(r) + "</p>").join("") +
+        "</details>";
     }
 
     function renderPartner() {
@@ -5039,12 +5072,12 @@
       }[todayCls];
       html += '<div class="card"><div class="status-eyebrow">Idag</div>';
       if (todayInfo) {
-        html += '<p class="status-sub" style="margin:6px 0 0">Loggat idag ✓</p>' +
+        html += partnerStatusLine("Loggat idag ✓", d) +
           '<div class="partner-today"><span class="partner-dot ' + todayCls + '"></span>' +
           '<span class="partner-today-text">' + todayInfo[0] + "</span></div>";
         if (todayInfo[1]) html += '<p class="status-sub" style="margin:8px 0 0">' + todayInfo[1] + "</p>";
       } else {
-        html += '<p class="status-sub" style="margin:6px 0 0">Inte loggat idag än.</p>';
+        html += partnerStatusLine("Inte loggat idag än.", d);
         // Senaste loggade dagen före idag, och hur den var.
         const last = (d.days || [])
           .filter((x) => x.date < today && x.level != null)
@@ -5110,6 +5143,11 @@
         '<button type="button" class="btn secondary" data-act="partner-refresh">Uppdatera</button>';
       el.innerHTML = html;
     }
+
+    // ⓘ i Idag-kortet: kom ihåg öppet-läget mellan omritningar (toggle bubblar inte).
+    document.getElementById("partner-content").addEventListener("toggle", (e) => {
+      if (e.target.classList && e.target.classList.contains("partner-info")) partnerInfoOpen = e.target.open;
+    }, true);
 
     document.getElementById("partner-content").addEventListener("click", async (e) => {
       // Markera ett förslag som klart (eller ångra).
