@@ -146,3 +146,11 @@ Deno.test("parseSignal: dags=true skrubbas", () => {
   assertEquals(s.text, "Dina senaste dagar liknar en tidigare period som blev tyngre. Kanske dags att känna efter?");
   assertEquals(s.text_partner, "Det ser ut som att en tyngre period kan vara på väg.");
 });
+
+Deno.test("buildAiInput: egna snabbval mappas till etikett, även borttagna; okända lämnas", () => {
+  const rows = [
+    mk("notes", "tags", { custom: [{ id: "egen-a", label: "Promenad" }, { id: "egen-b", label: "Bråk", removed: true }] }),
+    mk("mood", "2026-06-29", { scores: { humor: 3 }, tags: ["egen-a", "egen-b", "egen-x", "sov-dalig"] }),
+  ];
+  assertEquals(buildAiInput(rows, TODAY, 10).dagar[0].taggar, ["Promenad", "Bråk", "egen-x", "sov-dalig"]);
+});

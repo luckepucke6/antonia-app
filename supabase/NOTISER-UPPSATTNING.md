@@ -127,3 +127,11 @@ partnern. Prenumerationer som svarar 404/410 tas bort.
   och sändning är bara provade mot en lokal server.
 - Funktionen är inte körd i Supabase Edge-miljön, bara i Deno 2 lokalt.
 - Telefonen: att notisen faktiskt dyker upp och öppnar rätt vy är inte provat.
+
+## Fas 3
+
+Kör `supabase/fas3.sql` i SQL Editor (en gång, efter `schema.sql` och
+`notiser.sql`). Den skapar tabellen `feedback` (förslag från henne, läsbar för
+partnern), funktionen `feedback_done()` och en ny `partner_overview()` som även
+lämnar ut `helps` ("Det här hjälper mig") när hon själv slagit på delning.
+Filen går att köra om.

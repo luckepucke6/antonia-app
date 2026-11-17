@@ -187,11 +187,14 @@ const ROW_COLS = "store,key,data,deleted_at";
  */
 async function loadRows(db: SupabaseClient, userId: string, today: string): Promise<RecordRow[]> {
   const from = shiftDay(today, -(AI_DAYS - 1));
-  const [courses, times, meds, moods, bleeds, packs, pauses] = await Promise.all([
+  const [courses, times, tags, meds, moods, bleeds, packs, pauses] = await Promise.all([
     db.from("records").select(ROW_COLS).eq("user_id", userId).eq("store", "courses"),
     // Hennes valda notistider (en rad).
     db.from("records").select(ROW_COLS).eq("user_id", userId).eq("store", "notes")
       .eq("key", "notis-tider"),
+    // Hennes egna snabbval (en rad), används för att tolka taggar.
+    db.from("records").select(ROW_COLS).eq("user_id", userId).eq("store", "notes")
+      .eq("key", "tags"),
     db.from("records").select(ROW_COLS).eq("user_id", userId).eq("store", "medication")
       .eq("data->>date", today),
     db.from("records").select(ROW_COLS).eq("user_id", userId).eq("store", "mood")
@@ -205,10 +208,11 @@ async function loadRows(db: SupabaseClient, userId: string, today: string): Prom
     db.from("records").select(ROW_COLS).eq("user_id", userId).eq("store", "notes")
       .like("key", "ppaus:%").limit(1000),
   ]);
-  for (const r of [courses, times, meds, moods, bleeds, packs, pauses]) if (r.error) throw new Error("records: " + r.error.message);
+  for (const r of [courses, times, tags, meds, moods, bleeds, packs, pauses]) if (r.error) throw new Error("records: " + r.error.message);
   return [
     ...(courses.data ?? []),
     ...(times.data ?? []),
+    ...(tags.data ?? []),
     ...(meds.data ?? []),
     ...(moods.data ?? []),
     ...(bleeds.data ?? []),

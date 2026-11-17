@@ -191,6 +191,18 @@ export interface AiInput {
 /** Senaste `days` dagarna (inklusive idag) + alla omgångar. Inget kapas inom intervallet. */
 export function buildAiInput(rows: RecordRow[], today: string, days = 150): AiInput {
   const from = shiftDay(today, -(days - 1));
+  // Egna snabbval: id -> etikett ur notes-raden "tags" (även borttagna, så
+  // gamla dagar får rätt text). Okända id:n lämnas som de är.
+  const tagLabel = new Map<string, string>();
+  const custom = liveRows(rows, "notes").find((r) => r.key === "tags")?.data?.["custom"];
+  if (Array.isArray(custom)) {
+    for (const c of custom) {
+      const o = c as Record<string, unknown> | null;
+      if (o && typeof o["id"] === "string" && typeof o["label"] === "string" && o["label"]) {
+        tagLabel.set(o["id"], o["label"]);
+      }
+    }
+  }
   const dagar = liveRows(rows, "mood")
     .filter((r) => r.key >= from && r.key <= today)
     .sort((a, b) => (a.key < b.key ? -1 : 1))
@@ -206,7 +218,7 @@ export function buildAiInput(rows: RecordRow[], today: string, days = 150): AiIn
       return {
         datum: r.key,
         skattningar: scores,
-        taggar: Array.isArray(d["tags"]) ? (d["tags"] as unknown[]).map(String) : [],
+        taggar: Array.isArray(d["tags"]) ? (d["tags"] as unknown[]).map((t) => tagLabel.get(String(t)) ?? String(t)) : [],
         anteckning: typeof d["note"] === "string" ? (d["note"] as string) : "",
         sovtimmar: typeof d["sleepHours"] === "number" ? (d["sleepHours"] as number) : null,
         uppskattad: d["estimated"] === true,

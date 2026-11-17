@@ -236,7 +236,11 @@
     body.partner .tab { display: none; }
     body.partner .tab.partner-only { display: flex; }
     body.partner #btn-sync-now,
-    body.partner #backup-card { display: none; }
+    body.partner #backup-card,
+    body.partner #guide-card,
+    body.partner #tags-card,
+    body.partner #share-card,
+    body.partner #feedback-card { display: none; }
     .cal-day.static { cursor: default; }
     .tab.active { color: var(--accent); }
 
@@ -572,6 +576,36 @@
       background: var(--accent);
       border-color: var(--accent);
     }
+
+    /* Inställningar: Snabbval, delning, förslag och guide (Fas 3). */
+    .set-row {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; padding: 8px 0; border-top: 1px solid var(--line);
+    }
+    .set-row:first-child { border-top: 0; }
+    .set-row .set-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    .set-row .set-label.off { color: var(--muted); }
+    .mini-btn {
+      min-height: 36px; padding: 6px 12px; font: inherit; font-size: 0.85rem;
+      font-weight: 600; color: var(--accent); background: var(--accent-soft);
+      border: 0; border-radius: 999px; cursor: pointer; flex: none;
+    }
+    .mini-btn[aria-pressed="false"] { color: var(--muted); background: transparent; border: 1px solid var(--line); }
+    .share-check { display: flex; gap: 10px; align-items: flex-start; margin-top: 10px; }
+    .share-check input { width: 22px; height: 22px; flex: none; margin-top: 1px; accent-color: var(--accent); }
+    .share-preview, .fb-text, .partner-helps {
+      white-space: pre-wrap; overflow-wrap: anywhere;
+      background: var(--accent-soft); border-radius: 12px; padding: 10px 12px; margin-top: 8px;
+    }
+    .fb-item { padding: 10px 0; border-top: 1px solid var(--line); }
+    .fb-item:first-child { border-top: 0; }
+    .fb-item .fb-text { background: none; padding: 0; margin: 0; }
+    .fb-meta { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+    .guide-card details { border-top: 1px solid var(--line); }
+    .guide-card summary { cursor: pointer; font-weight: 600; padding: 12px 2px; }
+    .guide-card details > div { padding: 0 2px 12px; }
+    .guide-card p, .guide-card ul { margin: 0 0 8px; font-size: 0.92rem; }
+    .guide-card ul { padding-left: 18px; }
 
     /* Stora primärknappen "Jag tog den idag" */
     .btn.big { padding: 17px 16px; font-size: 1.08rem; }
@@ -1232,6 +1266,81 @@
 
     <!-- 6. Inställningar (nås via kugghjulet) – synk + export/import -->
     <section id="view-installningar" class="view">
+      <!-- Guide: korta förklaringar (dolt i partnerläge). -->
+      <div class="card guide-card" id="guide-card">
+        <strong>Så funkar appen</strong>
+        <p class="hint" style="margin:6px 0 4px;">Tryck på en rubrik för att läsa mer.</p>
+        <details>
+          <summary>Logga en dag</summary>
+          <div>
+            <p>På Idag räcker det med fyra tryck: humör, ångest, irritabilitet och
+            magbesvär. Det sparas direkt, du behöver inte trycka på något mer.</p>
+            <p>Orkar du mer går du till Mående. Där finns fler skalor, sömn, en
+            anteckning och Snabbval, korta val för sådant som hänt (till exempel
+            gråt eller svullenhet). Vilka snabbval som visas kan du ändra under
+            Snabbval här i Inställningar.</p>
+            <p>Dagar som är uppskattade i efterhand (utifrån gamla anteckningar) visas
+            som uppskattade. De blir vanliga dagar först när du sparar dem själv.</p>
+            <p>Tom ruta betyder bara att du inte loggat. Det är helt okej.</p>
+          </div>
+        </details>
+        <details>
+          <summary>Medicin och omgångar</summary>
+          <div>
+            <p>Under Medicin startar du en omgång när du börjar ta tabletten. Medan
+            omgången pågår bockar du av varje dag med "Jag tog den idag". Har du
+            glömt en dag kan du logga den i efterhand.</p>
+            <p>Här finns också p-pillerkartan: tryck "Ny karta startad idag" när du
+            börjar på en ny. Gör du uppehåll i p-pillren trycker du "Jag gör uppehåll",
+            och "Började igen" när du är tillbaka.</p>
+          </div>
+        </details>
+        <details>
+          <summary>Blödningar och uppehåll</summary>
+          <div>
+            <p>Under Blödningar loggar du dagar med blödning och väljer typ.</p>
+            <p>Under ett uppehåll i p-pillren, och de 7 dagarna efter att det tagit slut,
+            föreslår appen bortfallsblödning. Du kan ändra om det inte stämmer.</p>
+            <p>Bortfallsblödning räknas inte som mellanblödning i statistiken, utan
+            visas för sig.</p>
+          </div>
+        </details>
+        <details>
+          <summary>Hur Mönster räknar</summary>
+          <div>
+            <p>Mönster visar en månadskalender, ett kort med det som syns just nu och
+            lite mer statistik längre ner, samt en rapport du kan skriva ut till läkaren.</p>
+            <p>Jämförelser visas först när du loggat minst 14 dagar, och varje
+            grupp som jämförs måste ha minst 5 dagar. Annars säger siffrorna för lite.</p>
+            <p>Uppskattade dagar räknas inte med i jämförelserna. Trycker du på ⓘ får
+            du veta hur en siffra är räknad.</p>
+          </div>
+        </details>
+        <details>
+          <summary>AI-kollen</summary>
+          <div>
+            <p>Är du inloggad tittar en AI-koll på din dagbok varje kväll mellan 21 och
+            23. Den körs bara om ingen omgång pågår och du loggat idag eller igår.</p>
+            <p>Den får läsa dina skattningar, snabbval, anteckningar, omgångar,
+            blödningar, p-pillerkartor och uppehåll, och jämför med hur det såg ut
+            före tidigare omgångar.</p>
+            <p>Om det liknar ett tidigare mönster dyker kortet "Känner du igen det här?"
+            upp på Idag. Det är bara en puff, aldrig ett råd om medicin eller dos.
+            Det är du och din läkare som bestämmer.</p>
+          </div>
+        </details>
+        <details>
+          <summary>Säkerhetskopiering</summary>
+          <div>
+            <p>Allt sparas på telefonen. När du är inloggad sparas det också i molnet
+            och följer med om du byter telefon.</p>
+            <p>Under Säkerhetskopiering kan du exportera en fil med allt. "Importera
+            från fil" ersätter allt du har med innehållet i filen, medan "Lägg till
+            från fil" bara lägger till det som saknas och ändrar inget.</p>
+          </div>
+        </details>
+      </div>
+
       <!-- Synk mot Supabase: inloggad = data sparas även i molnet. -->
       <div class="card">
         <strong>Synk</strong>
@@ -1267,6 +1376,36 @@
         <button class="btn secondary" type="button" id="btn-notis-off" hidden>Stäng av notiser på den här telefonen</button>
         <!-- Påminnelsetider (fylls av fillNotisTider; dolt i partnerläge) -->
         <div id="notis-tider" hidden></div>
+      </div>
+
+      <!-- Snabbval: välj vilka som visas i Mående och lägg till egna. -->
+      <div class="card" id="tags-card">
+        <strong>Snabbval</strong>
+        <p class="hint" style="margin:6px 0 4px;">Dolda snabbval försvinner bara från listan i Mående. Det du redan loggat finns kvar.</p>
+        <div id="tags-list"></div>
+        <form id="tags-add-form" style="display:flex;gap:8px;margin-top:10px;">
+          <input class="sync-input" style="margin-top:0;flex:1;min-width:0;" id="tags-add-input"
+                 maxlength="30" placeholder="Eget snabbval" autocomplete="off" />
+          <button class="mini-btn" type="submit" style="flex:none;">Lägg till</button>
+        </form>
+      </div>
+
+      <!-- Dela "Det här hjälper mig" med partnern (av som standard). -->
+      <div class="card" id="share-card">
+        <strong>Dela med Lucas</strong>
+        <div id="share-body"></div>
+      </div>
+
+      <!-- Förslag på förbättringar (sparas lokalt, skickas när hon är inloggad). -->
+      <div class="card" id="feedback-card">
+        <strong>Förslag på förbättringar</strong>
+        <p class="hint" style="margin:6px 0 0;">Saknar du något eller vill du ändra något? Skriv det här.</p>
+        <p class="hint" style="margin:4px 0 0;">Lucas läser dina förslag.</p>
+        <textarea class="note" id="feedback-text" rows="3" maxlength="2000"
+                  placeholder="Mitt förslag …" style="margin-top:8px;"></textarea>
+        <button class="btn" type="button" id="btn-feedback-send">Skicka</button>
+        <p class="hint" id="feedback-hint"></p>
+        <div id="feedback-list"></div>
       </div>
 
       <!-- Utvecklare: bara för partner-läge eller demoläge (styrs av renderDevUI). -->
@@ -1359,6 +1498,14 @@
       // Fyll tidsvalen på nytt så de visar det som faktiskt är sparat.
       if (name === "installningar" && !partnerMode) fillNotisTider(document.getElementById("notis-tider"));
       if (name === "partner") renderPartner();
+      // Mående: läs snabbvalsinställningarna på nytt. Inställningar: dela + förslag.
+      if (name === "maende") loadTagSettings();
+      if (name === "installningar" && !partnerMode) {
+        loadTagSettings();
+        renderShareCard();
+        renderFeedbackCard();
+        flushFeedback();
+      }
     }
 
     // Kugghjulet i sidhuvudet öppnar Inställningar (ingen egen flik).
@@ -1628,6 +1775,20 @@
             const have = new Set(live(store).map((r) => syncKey(store, r)));
             incoming(store).forEach((r) => {
               if (!have.has(syncKey(store, r))) put(store, r);
+              else if (store === "notes" && r.key === "tags") {
+                // Egna snabbval: slå ihop per id, dolda som union.
+                const cur = live("notes").find((x) => x.key === "tags");
+                const custom = Array.isArray(cur.custom) ? cur.custom.slice() : [];
+                const ids = new Set(custom.map((c) => c.id));
+                (Array.isArray(r.custom) ? r.custom : []).forEach((c) => {
+                  if (!ids.has(c.id)) custom.push(c);
+                });
+                const hidden = Array.from(new Set(
+                  (cur.hidden || []).concat(Array.isArray(r.hidden) ? r.hidden : [])));
+                // Samma transaktion som övrigt: put() stämplar updatedAt/dirty
+                // (addRecord öppnar en egen transaktion och kan inte användas här).
+                put("notes", { ...cur, custom, hidden });
+              }
             });
           });
 
@@ -1756,6 +1917,7 @@
         scheduleSync();
         refreshCurrentView();
         loadMoodForDate(moodDate);
+        loadTagSettings();
 
         setStatus("Import klar – all data återställd.");
       } catch (err) {
@@ -1782,6 +1944,7 @@
         scheduleSync();
         refreshCurrentView();
         loadMoodForDate(moodDate);
+        loadTagSettings();
 
         const parts = [];
         if (added.mood) parts.push(dagar(added.mood) + " mående");
@@ -1872,12 +2035,44 @@
       { id: "svullen",          label: "Svullen" },
       { id: "forstoppad",       label: "Förstoppad" },
     ];
+    // Hennes egna inställningar för snabbval (notes-posten "tags"):
+    // hidden = dolda id:n, custom = egna val { id, label, removed? }.
+    // Id:n ändras aldrig, så gammal data visas rätt även för dolda/borttagna val.
+    let tagSettings = { hidden: [], custom: [] };
+    // Alla kända snabbval (inbyggda + egna, även borttagna så gamla dagar har text).
+    function allTags() {
+      return MOOD_TAGS.concat(tagSettings.custom.map((c) => ({ id: c.id, label: c.label })));
+    }
+    // De som visas som val i Mående (inte dolda, inte borttagna).
+    function visibleTags() {
+      const gone = new Set(tagSettings.custom.filter((c) => c.removed).map((c) => c.id));
+      return allTags().filter((t) => !tagSettings.hidden.includes(t.id) && !gone.has(t.id));
+    }
     // Etiketter för en posts taggar (tål okända/äldre id:n).
     function tagLabels(rec) {
+      const all = allTags();
       return ((rec && rec.tags) || []).map((id) => {
-        const t = MOOD_TAGS.find((x) => x.id === id);
+        const t = all.find((x) => x.id === id);
         return t ? t.label : id;
       });
+    }
+    // Läs inställningarna ur databasen och rita om chips + Inställningar-kortet.
+    async function loadTagSettings() {
+      let rec = null;
+      try {
+        rec = await getRecord("notes", "tags");
+      } catch (err) {
+        // Behåll det som redan finns i minnet hellre än att nollställa.
+        console.warn("Kunde inte läsa snabbvalsinställningarna:", err);
+        return;
+      }
+      tagSettings = {
+        hidden: Array.isArray(rec && rec.hidden) ? rec.hidden.slice() : [],
+        custom: Array.isArray(rec && rec.custom)
+          ? rec.custom.filter((c) => c && c.id && c.label) : [],
+      };
+      renderTagChips();
+      renderTagsCard();
     }
 
     // --- State för den dag som visas ---
@@ -1928,9 +2123,8 @@
 
       // Snabbval-taggar: tryck för att slå på/av.
       const tagsEl = document.getElementById("mood-tags");
-      tagsEl.innerHTML = MOOD_TAGS.map((t) =>
-        `<button class="tag-opt" type="button" data-tag="${t.id}" ` +
-        `aria-pressed="false">${t.label}</button>`).join("");
+      renderTagChips();
+      // Klickhanteraren sätts en gång; chippen byggs om av renderTagChips().
       tagsEl.addEventListener("click", (e) => {
         const btn = e.target.closest(".tag-opt");
         if (!btn) return;
@@ -1964,6 +2158,24 @@
       });
     }
 
+    // Bygg snabbval-chippen: de som visas + dolda/okända som redan är valda
+    // på dagen (så att de syns och kan avmarkeras).
+    function renderTagChips() {
+      const tagsEl = document.getElementById("mood-tags");
+      if (!tagsEl) return;
+      const list = visibleTags().slice();
+      const all = allTags();
+      selectedTags.forEach((id) => {
+        if (list.some((t) => t.id === id)) return;
+        const known = all.find((t) => t.id === id);
+        list.push({ id, label: known ? known.label : id });
+      });
+      tagsEl.innerHTML = list.map((t) =>
+        '<button class="tag-opt" type="button" data-tag="' + escapeHTML(t.id) + '" ' +
+        'aria-pressed="false">' + escapeHTML(t.label) + "</button>").join("");
+      renderTags();
+    }
+
     function renderTags() {
       document.querySelectorAll("#mood-tags .tag-opt").forEach((btn) => {
         const on = selectedTags.has(btn.dataset.tag);
@@ -1975,7 +2187,7 @@
     // Spegla hela state (alla metriker + sömntimmar + fritext) till DOM.
     function renderSelections(rec) {
       MOOD_METRICS.forEach((m) => renderMetric(m.id));
-      renderTags();
+      renderTagChips();   // bygger om chippen (inkl. valda dolda) och markerar valda
       document.getElementById("mood-estimated").hidden = !(rec && rec.estimated);
       document.getElementById("sleep-hours").value =
         rec && rec.sleepHours != null ? rec.sleepHours : "";
@@ -2069,6 +2281,7 @@
     // Bygg raderna och ladda dagens post direkt så vyn är redo.
     buildMetricRows();
     loadMoodForDate(todayISO());
+    loadTagSettings();
 
     /* ======================================================================
        f) MEDICIN-VYN (escitalopram i omgångar)
@@ -3836,7 +4049,7 @@
     }
 
     function buildTagStats(mood) {
-      const counts = MOOD_TAGS.map((t) => ({
+      const counts = allTags().map((t) => ({
         label: t.label,
         n: mood.filter((m) => (m.tags || []).includes(t.id)).length,
       })).filter((t) => t.n).sort((a, b) => b.n - a.n);
@@ -4344,7 +4557,10 @@
         if (changed) {
           refreshCurrentView();
           if (currentView !== "maende") loadMoodForDate(moodDate);
+          loadTagSettings();
+          renderShareCard();
         }
+        flushFeedback();
       } catch (err) {
         console.warn("Synk misslyckades:", err);
         setSyncStatus(navigator.onLine
@@ -4702,6 +4918,23 @@
         const { data, error } = await sb.rpc("partner_overview");
         if (error) throw error;
         if (data && data.owner) {
+          // Hennes förslag (partnern får läsa dem). Fel ignoreras: tabellen kan saknas.
+          let fb = (partnerData && partnerData.feedback) || [];
+          try {
+            // Alla öppna förslag, men bara de 20 senast fixade.
+            const cols = "id,text,created_at,done_at";
+            const [open, done] = await Promise.all([
+              sb.from("feedback").select(cols).is("done_at", null)
+                .order("created_at", { ascending: false }),
+              sb.from("feedback").select(cols).not("done_at", "is", null)
+                .order("done_at", { ascending: false }).limit(20),
+            ]);
+            if (!open.error && !done.error && Array.isArray(open.data) && Array.isArray(done.data)) {
+              fb = open.data.concat(done.data)
+                .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+            }
+          } catch (_) { /* behåll tidigare */ }
+          data.feedback = fb;
           partnerData = data;
           localStorage.setItem("partner-user", syncUser.id);
           localStorage.setItem("partner-cache", JSON.stringify(data));
@@ -4766,6 +4999,18 @@
           '<p class="hint" style="margin-top:8px">' + fmtLong(s.date) + "</p></div>";
       }
 
+      // "Det här brukar hjälpa henne": bara när hon delat det OCH det verkar vara en
+      // tyngre period (aktiv omgång, färsk signal, eller minst 2 av 3 senaste dagarna tunga).
+      const recentSignal = !!(s && s.dags && s.date >= shiftDate(today, -2));
+      const heavyDays = [0, 1, 2].filter((i) => {
+        const x = dayBy.get(shiftDate(today, -i));
+        return x && x.level != null && levelClass(Number(x.level)) === "tung";
+      }).length;
+      if (d.helps && (active || recentSignal || heavyDays >= 2)) {
+        html += '<div class="card"><div class="support-title">Det här brukar hjälpa henne 💗</div>' +
+          '<div class="partner-helps">' + escapeHTML(d.helps) + "</div></div>";
+      }
+
       html += '<div class="card"><div class="status-eyebrow">Medicin</div>';
       if (active) {
         const taken = dayBy.get(today) && dayBy.get(today).med;
@@ -4828,9 +5073,32 @@
         tile(classes.filter((c) => c === "latt").length, "lätta dagar") +
         tile(past.filter((x) => x.med).length, "dagar med medicin") + "</div></div>";
 
+      // Förslag från Antonia: öppna först, fixade i en fällbar lista.
+      const fbs = Array.isArray(d.feedback) ? d.feedback : [];
+      if (fbs.length) {
+        const item = (f, label, act) =>
+          '<div class="fb-item"><div class="fb-text">' + escapeHTML(f.text) + "</div>" +
+          '<div class="fb-meta">' + fmtLong(isoFromDate(new Date(f.created_at))) + "</div>" +
+          '<button type="button" class="mini-btn" data-act="' + act + '" data-id="' +
+          escapeHTML(f.id) + '" style="margin-top:6px">' + label + "</button></div>";
+        const open = fbs.filter((f) => !f.done_at);
+        const done = fbs.filter((f) => f.done_at);
+        html += '<div class="card"><div class="status-eyebrow">Förslag från Antonia</div>';
+        html += open.length ? open.map((f) => item(f, "Klar", "fb-done")).join("")
+          : '<p class="hint" style="margin:8px 0 0">Inga öppna förslag just nu.</p>';
+        if (done.length)
+          html += '<details style="margin-top:8px"><summary style="cursor:pointer;font-weight:600">' +
+            "Fixade (" + done.length + ")</summary>" +
+            done.map((f) => item(f, "Ångra", "fb-undo")).join("") + "</details>";
+        html += "</div>";
+      }
+
       html += '<p class="hint" style="margin:12px 4px 0">Du ser en översikt: hur tung varje ' +
         "dag har varit, en nivå per område (känslor, kropp, sömn) och när medicinen " +
-        "tagits. Det hon skriver och de enskilda skattningarna visas inte här.</p>" +
+        "tagits. Det hon skriver och de enskilda skattningarna visas inte här. " +
+        "Det enda undantaget är 'Det här brukar hjälpa henne', som visas bara om hon " +
+        "själv valt att dela det och bara när det verkar vara en tyngre period. " +
+        "Hennes förslag på förbättringar visas också.</p>" +
         '<button type="button" class="btn secondary" data-act="partner-refresh">Uppdatera</button>';
       el.innerHTML = html;
     }
@@ -4840,6 +5108,27 @@
       if (nav) {
         partnerMonth = shiftMonth(partnerMonth, Number(nav.dataset.month));
         renderPartner();
+        return;
+      }
+      // Markera ett förslag som klart (eller ångra).
+      const fbBtn = e.target.closest('[data-act="fb-done"], [data-act="fb-undo"]');
+      if (fbBtn) {
+        const done = fbBtn.dataset.act === "fb-done";
+        const id = fbBtn.dataset.id;
+        try {
+          const { data: updated, error } = await sb.rpc("feedback_done", { p_id: id, p_done: done });
+          if (error) throw error;
+          // false = ingen rad uppdaterades: ändra inget lokalt.
+          if (updated !== true) throw new Error("ingen rad uppdaterades");
+          const f = ((partnerData && partnerData.feedback) || []).find((x) => x.id === id);
+          if (f) f.done_at = done ? new Date().toISOString() : null;
+          localStorage.setItem("partner-cache", JSON.stringify(partnerData));
+          renderPartner();
+          showToast(done ? "Markerat som klart ✓" : "Ångrat ✓");
+        } catch (err) {
+          console.warn("Kunde inte uppdatera förslaget:", err);
+          showToast("Kunde inte spara – försök igen");
+        }
         return;
       }
       if (e.target.closest('[data-act="partner-refresh"]')) {
@@ -4895,6 +5184,228 @@
     // Be webbläsaren att inte rensa lagringen när utrymmet tryter.
     if (navigator.storage && navigator.storage.persist) {
       navigator.storage.persist().catch(() => {});
+    }
+
+    /* ======================================================================
+       k) FAS 3: Snabbval-kort, Dela med Lucas, Förslag på förbättringar
+       =================================================================== */
+
+    // --- Snabbval (Inställningar) ---
+    // Spara inställningarna som en vanlig notes-post (synkas som övrigt).
+    async function saveTagSettings() {
+      // Läs det som redan finns sparat så att egna snabbval från en annan
+      // enhet inte tappas: slå ihop per id, de i minnet vinner.
+      try {
+        const saved = await getRecord("notes", "tags");
+        if (saved && Array.isArray(saved.custom)) {
+          const have = new Set(tagSettings.custom.map((c) => c.id));
+          saved.custom.forEach((c) => { if (!have.has(c.id)) tagSettings.custom.push(c); });
+        }
+      } catch (_) { /* spara ändå det vi har */ }
+      await addRecord("notes", {
+        key: "tags", hidden: tagSettings.hidden, custom: tagSettings.custom,
+      });
+      scheduleSync();
+      renderTagChips();
+      renderTagsCard();
+    }
+
+    // Lista alla snabbval med Visas/Dold och (för egna) Ta bort.
+    function renderTagsCard() {
+      const el = document.getElementById("tags-list");
+      if (!el) return;
+      const custom = tagSettings.custom.filter((c) => !c.removed);
+      const rows = MOOD_TAGS.map((t) => ({ ...t, own: false }))
+        .concat(custom.map((c) => ({ id: c.id, label: c.label, own: true })));
+      el.innerHTML = rows.map((t) => {
+        const shown = !tagSettings.hidden.includes(t.id);
+        return '<div class="set-row"><span class="set-label' + (shown ? "" : " off") + '">' +
+          escapeHTML(t.label) + "</span>" +
+          '<button type="button" class="mini-btn" data-tag-toggle="' + escapeHTML(t.id) + '" ' +
+          'aria-pressed="' + shown + '">' + (shown ? "Visas" : "Dold") + "</button>" +
+          (t.own ? '<button type="button" class="mini-btn" data-tag-remove="' +
+            escapeHTML(t.id) + '">Ta bort</button>' : "") + "</div>";
+      }).join("");
+    }
+
+    document.getElementById("tags-list").addEventListener("click", async (e) => {
+      const tog = e.target.closest("[data-tag-toggle]");
+      const rem = e.target.closest("[data-tag-remove]");
+      if (tog) {
+        const id = tog.dataset.tagToggle;
+        const hidden = new Set(tagSettings.hidden);
+        if (hidden.has(id)) hidden.delete(id); else hidden.add(id);
+        tagSettings.hidden = Array.from(hidden);
+        await saveTagSettings();
+      } else if (rem) {
+        // Etiketten behålls (removed) så att gamla dagar fortsatt visar rätt text.
+        const id = rem.dataset.tagRemove;
+        tagSettings.custom = tagSettings.custom.map((c) =>
+          c.id === id ? { ...c, removed: true } : c);
+        tagSettings.hidden = tagSettings.hidden.filter((h) => h !== id);
+        await saveTagSettings();
+      }
+    });
+
+    document.getElementById("tags-add-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const input = document.getElementById("tags-add-input");
+      const label = input.value.trim().slice(0, 30);
+      if (!label) return;
+      const lower = label.toLocaleLowerCase("sv-SE");
+      const same = (t) => t.label.toLocaleLowerCase("sv-SE") === lower;
+      // Finns det redan (inbyggt eller eget som visas)? Inga dubbletter.
+      const live = MOOD_TAGS.concat(tagSettings.custom.filter((c) => !c.removed));
+      if (live.some(same)) { showToast("Det snabbvalet finns redan"); return; }
+      // Matchar ett tidigare borttaget eget val: ta fram det igen.
+      const old = tagSettings.custom.find((c) => c.removed && same(c));
+      if (old) {
+        tagSettings.custom = tagSettings.custom.map((c) =>
+          c.id === old.id ? { id: c.id, label: c.label } : c);
+        tagSettings.hidden = tagSettings.hidden.filter((h) => h !== old.id);
+      } else {
+        tagSettings.custom = tagSettings.custom.concat([
+          { id: "egen-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6), label },
+        ]);
+      }
+      input.value = "";
+      await saveTagSettings();
+      showToast("Tillagt ✓");
+    });
+
+    // --- Dela "Det här hjälper mig" (notes-nyckel "helps-share") ---
+    async function renderShareCard() {
+      const body = document.getElementById("share-body");
+      if (!body || partnerMode) return;
+      let share = null, helps = null;
+      try {
+        share = await getRecord("notes", "helps-share");
+        helps = await getRecord("notes", "helps");
+      } catch (_) { /* tomt */ }
+      const on = !!(share && share.on);
+      const own = (share && share.text) || "";
+      const preview = own.trim() || ((helps && helps.text) || "").trim();
+      let html = "";
+      if (!syncUser && !DEMO_MODE)
+        html += '<p class="hint" style="margin:6px 0 0">Delning kräver att du är inloggad så att ' +
+          "dagboken synkas. Du kan förbereda det redan nu.</p>";
+      html += '<label class="share-check"><input type="checkbox" id="share-on"' +
+        (on ? " checked" : "") + "><span>Dela 'Det här hjälper mig' med Lucas</span></label>";
+      if (on) {
+        html += '<label for="share-text" class="hint" style="display:block">' +
+          "Egen text bara till Lucas (valfritt)</label>" +
+          '<textarea class="note" id="share-text" rows="4" maxlength="1000" ' +
+          'style="margin-top:4px">' + escapeHTML(own) + "</textarea>" +
+          '<button type="button" class="btn" id="btn-share-save">Spara</button>' +
+          '<p class="hint">Lucas ser det bara när det verkar vara en tyngre period. ' +
+          "Är rutan tom ser han din lista 'Det här hjälper mig'. Inget annat ur dagboken delas.</p>" +
+          '<div class="hint" style="margin-bottom:0">Så här ser Lucas det:</div>' +
+          '<div class="share-preview">' + (preview ? escapeHTML(preview) : "Inget att dela än") + "</div>";
+      }
+      body.innerHTML = html;
+    }
+
+    async function saveShare(patch) {
+      const old = (await getRecord("notes", "helps-share")) || {};
+      await addRecord("notes", {
+        key: "helps-share", on: !!old.on, text: old.text || "", ...patch,
+      });
+      scheduleSync();
+      await renderShareCard();
+    }
+    document.getElementById("share-body").addEventListener("change", (e) => {
+      if (e.target.id === "share-on") saveShare({ on: e.target.checked });
+    });
+    document.getElementById("share-body").addEventListener("click", async (e) => {
+      if (!e.target.closest("#btn-share-save")) return;
+      await saveShare({ text: document.getElementById("share-text").value.trim() });
+      showToast("Sparat ✓");
+    });
+
+    // --- Förslag på förbättringar (localStorage "feedback", tabellen feedback) ---
+    let feedbackShowAll = false;
+    function loadFeedback() {
+      try {
+        const l = JSON.parse(localStorage.getItem(lsKey("feedback")));
+        return Array.isArray(l) ? l : [];
+      } catch (_) { return []; }
+    }
+    function saveFeedbackList(list) {
+      localStorage.setItem(lsKey("feedback"), JSON.stringify(list));
+    }
+
+    function renderFeedbackCard() {
+      const el = document.getElementById("feedback-list");
+      if (!el) return;
+      document.getElementById("feedback-hint").textContent =
+        DEMO_MODE ? "Demoläge – skickas inte." : "";
+      const all = loadFeedback().slice().sort((a, b) => (a.created < b.created ? 1 : -1));
+      const shown = feedbackShowAll ? all : all.slice(0, 10);
+      el.innerHTML = shown.map((f) => {
+        const status = f.done ? "✓ Fixat" : f.sent ? "Skickat" : "Väntar på att skickas";
+        return '<div class="fb-item"><div class="fb-text">' + escapeHTML(f.text) + "</div>" +
+          '<div class="fb-meta">' + fmtLong(isoFromDate(new Date(f.created))) + " · " + status + "</div></div>";
+      }).join("") + (all.length > 10 && !feedbackShowAll
+        ? '<button type="button" class="text-btn" id="btn-feedback-all">Visa alla (' + all.length + ")</button>"
+        : "");
+    }
+
+    document.getElementById("btn-feedback-send").addEventListener("click", () => {
+      const ta = document.getElementById("feedback-text");
+      const text = ta.value.trim();
+      if (!text) return;   // tom text skickas inte
+      const list = loadFeedback();
+      list.push({
+        id: newUid(), text: text.slice(0, 2000),
+        created: new Date().toISOString(), sent: false, done: false,
+      });
+      saveFeedbackList(list);
+      ta.value = "";
+      showToast("Tack! 💗");
+      renderFeedbackCard();
+      flushFeedback();
+    });
+    document.getElementById("feedback-list").addEventListener("click", (e) => {
+      if (!e.target.closest("#btn-feedback-all")) return;
+      feedbackShowAll = true;
+      renderFeedbackCard();
+    });
+
+    // Skicka osända förslag och hämta vilka som markerats som fixade.
+    // Fel är tysta: det försöks igen vid nästa synk.
+    let _feedbackBusy = false;
+    let _feedbackAgain = false;   // någon bad om en ny körning medan den gick
+    async function flushFeedback() {
+      if (!sb || !syncUser || DEMO_MODE || partnerMode) return;
+      if (_feedbackBusy) { _feedbackAgain = true; return; }
+      _feedbackBusy = true;
+      try {
+        let list = loadFeedback();
+        const unsent = list.filter((f) => !f.sent);
+        if (unsent.length) {
+          const { error } = await sb.from("feedback").upsert(
+            unsent.map((f) => ({ id: f.id, text: f.text })),
+            { onConflict: "id", ignoreDuplicates: true });
+          if (error) throw error;
+          // Läs om listan: hon kan ha skrivit ett nytt förslag under tiden.
+          const ids = new Set(unsent.map((f) => f.id));
+          list = loadFeedback().map((f) => ids.has(f.id) ? { ...f, sent: true } : f);
+          saveFeedbackList(list);
+        }
+        const { data, error } = await sb.from("feedback").select("id, done_at");
+        if (error) throw error;
+        const doneBy = new Map((data || []).map((r) => [r.id, !!r.done_at]));
+        list = loadFeedback().map((f) =>
+          doneBy.has(f.id) ? { ...f, done: doneBy.get(f.id) } : f);
+        saveFeedbackList(list);
+        renderFeedbackCard();
+      } catch (err) {
+        console.warn("Förslag kunde inte skickas just nu:", err);
+      } finally {
+        _feedbackBusy = false;
+        // Kör en gång till om något nytt kom in under tiden.
+        if (_feedbackAgain) { _feedbackAgain = false; flushFeedback(); }
+      }
     }
 
     /* --- Utvecklare / demoläge ---

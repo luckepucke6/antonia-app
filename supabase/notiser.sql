@@ -86,7 +86,8 @@ grant select on public.shares to service_role;
 --    tas bort. I stället finns en funktion som bara lämnar ut en sammanfattning:
 --    dagens "helhet" (ett tal), om tablett togs, omgångarnas datum och den
 --    korta partnertexten från den dagliga kollen.
---    ALDRIG: anteckningar, taggar, enskilda skattningar eller hennes "text".
+--    ALDRIG: anteckningar, taggar, enskilda skattningar eller hennes "text" –
+--    utom "Det här hjälper mig" (fältet helps) när hon själv slagit på delning.
 -- ---------------------------------------------------------------------------
 drop policy if exists records_viewer_select on public.records;
 
@@ -106,6 +107,10 @@ declare
   v_courses jsonb;
   v_signal  jsonb;
   v_areas7  jsonb;
+  v_helps   text;
+  v_share   jsonb;
+  v_helps_n jsonb;
+  v_heavy   boolean;
 begin
   -- Vems dagbok får den inloggade titta på? (Finns flera: den första.)
   select s.owner into v_owner
@@ -219,12 +224,54 @@ begin
     and r.deleted_at is null
     and (r.data ->> 'deletedAt') is null;
 
+  -- "Det här hjälper mig": bara om hon slagit på delning (notes-raden
+  -- 'helps-share', data.on = true) OCH det är en tyngre period just nu:
+  -- en aktiv omgång, ELLER en signal (dags = true) som är högst två dagar
+  -- gammal, ELLER minst 2 av de 3 senaste dagarna (svensk tid) med nivå >= 3.5.
+  -- Egen text till partnern går före listan i notes-raden 'helps'. Tom text
+  -- blir null. Inget annat ur notes.
+  select r.data into v_share
+  from public.records r
+  where r.user_id = v_owner
+    and r.store = 'notes'
+    and r.key = 'helps-share'
+    and r.deleted_at is null
+    and (r.data ->> 'deletedAt') is null;
+
+  v_heavy := exists (
+      select 1 from jsonb_array_elements(v_courses) c
+      where (c -> 'active') = 'true'::jsonb)
+    or (v_signal is not null
+        and (v_signal -> 'dags') = 'true'::jsonb
+        and (v_signal ->> 'date') >=
+            to_char((now() at time zone 'Europe/Stockholm')::date - 2, 'YYYY-MM-DD'))
+    or (select count(*) from jsonb_array_elements(v_days) d
+        where (d ->> 'date') >=
+              to_char((now() at time zone 'Europe/Stockholm')::date - 2, 'YYYY-MM-DD')
+          and (d ->> 'level') is not null
+          and (d ->> 'level')::numeric >= 3.5) >= 2;
+
+  if v_heavy and v_share is not null and (v_share -> 'on') = 'true'::jsonb then
+    v_helps := nullif(btrim(coalesce(v_share ->> 'text', '')), '');
+    if v_helps is null then
+      select r.data into v_helps_n
+      from public.records r
+      where r.user_id = v_owner
+        and r.store = 'notes'
+        and r.key = 'helps'
+        and r.deleted_at is null
+        and (r.data ->> 'deletedAt') is null;
+      v_helps := nullif(btrim(coalesce(v_helps_n ->> 'text', '')), '');
+    end if;
+  end if;
+
   return jsonb_build_object(
     'owner',   v_owner,
     'days',    v_days,
     'areas7',  v_areas7,
     'courses', v_courses,
-    'signal',  v_signal);   -- null om ingen koll har körts
+    'signal',  v_signal,    -- null om ingen koll har körts
+    'helps',   v_helps);    -- null om hon inte delar
 end;
 $$;
 
