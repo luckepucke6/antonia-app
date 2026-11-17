@@ -261,9 +261,14 @@
     }
     .face {
       flex: 1;
-      min-height: 44px;            /* bekväm träffyta på mobil */
-      font-size: 1.7rem;
+      font-size: 1.7rem;          /* gäller bara emojin (.face-text har egen storlek) */
       line-height: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      padding: 4px 0;
+      min-height: 64px;            /* jämna rader trots text som radbryts */
       background: none;
       border: none;
       border-radius: 12px;
@@ -279,10 +284,25 @@
     .face.selected {
       opacity: 1;
       filter: none;
-      transform: scale(1.18);
       background: var(--accent-soft);
     }
+    .face-emoji { display: inline-block; transition: transform 0.18s ease; }
+    .face.selected .face-emoji { transform: scale(1.18); }
+    /* Med text: dämpa bara emojin, så texten går att läsa även när den inte är vald */
+    .face:has(.face-text) { opacity: 1; filter: none; }
+    .face:has(.face-text):not(.selected) .face-emoji { opacity: 0.4; filter: grayscale(0.5); }
+    .face-text {
+      font-size: 0.62rem;
+      line-height: 1.1;
+      color: var(--muted);
+      text-align: center;
+      overflow-wrap: anywhere;
+    }
+    /* Blödningsvyns ansikten har bara emoji (ingen text) */
+    #bleed-mood .face { min-height: 44px; }
+    #bleed-mood .face.selected { transform: scale(1.18); }
     .face:active { transform: scale(0.92); }
+    #bleed-mood .face:active { transform: scale(0.92); }
 
     /* Låg/hög-etiketter under skalan */
     .scale-ends {
@@ -782,6 +802,38 @@
     .bar-track.stack i { border-radius: 3px; min-width: 3px; }
     .stat-row .stat-val { white-space: nowrap; }
 
+    /* Demoläge: smal banderoll överst, resten av sidan skjuts ner */
+    .demo-banner { display: none; }
+    body.demo { --demo-h: calc(env(safe-area-inset-top) + 30px); padding-top: var(--demo-h); }
+    body.demo .demo-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 20;
+      height: var(--demo-h);
+      box-sizing: border-box;
+      padding: env(safe-area-inset-top) 14px 0;
+      background: var(--accent-soft);
+      border-bottom: 1px solid var(--line);
+      color: var(--text);
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+    .demo-banner button {
+      font: inherit;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 2px 10px;
+      cursor: pointer;
+    }
+    /* Rubriken fäst under banderollen; statusraden täcks redan av den */
+    body.demo .app-header { top: var(--demo-h); padding-top: 14px; }
+
     .day-detail-list { margin: 8px 0 0; padding: 0; list-style: none; }
     .day-detail-list li {
       display: flex;
@@ -933,6 +985,11 @@
 </head>
 
 <body>
+  <!-- Demoläge: syns bara när body har klassen "demo" -->
+  <div class="demo-banner" id="demo-banner">
+    <span>Demoläge – påhittad data</span>
+    <button type="button" id="btn-demo-exit">Avsluta</button>
+  </div>
   <!-- =======================================================================
        RUBRIK – uppdateras när man byter vy
        ==================================================================== -->
@@ -1104,6 +1161,15 @@
         <button class="btn secondary" type="button" id="btn-notis-off" hidden>Stäng av notiser på den här telefonen</button>
       </div>
 
+      <!-- Utvecklare: bara för partner-läge eller demoläge (styrs av renderDevUI). -->
+      <div class="card" id="dev-card" hidden>
+        <strong>Utvecklare</strong>
+        <p class="hint" style="margin-top:6px;" id="dev-hint"></p>
+        <button class="btn" type="button" id="btn-dev-demo-on" hidden>Visa hennes app (demo)</button>
+        <button class="btn secondary" type="button" id="btn-dev-demo-off" hidden>Avsluta demo</button>
+        <button class="btn secondary" type="button" id="btn-dev-demo-reset" hidden>Återställ demodata</button>
+      </div>
+
       <div class="card" id="backup-card">
         <strong>Säkerhetskopiering</strong>
         <p class="hint" style="margin-top:6px;">
@@ -1207,7 +1273,14 @@
             notes       – nyckel = key, egna texter: { key, text }
                           (t.ex. key "helps" = listan "Det här hjälper mig")
        =================================================================== */
-    const DB_NAME = "antonia-dagbok";
+    // Demoläge (localStorage "dev-demo" = "1"): egen databas med påhittad data,
+    // ingen synk, inget partnerläge, inga notiser.
+    let DEMO_MODE = false;
+    try { DEMO_MODE = localStorage.getItem("dev-demo") === "1"; } catch (_) {}
+    if (DEMO_MODE) document.body.classList.add("demo");
+    // I demoläget får localStorage-nycklar prefix så de inte krockar med riktig data.
+    const lsKey = (k) => DEMO_MODE ? "demo-" + k : k;
+    const DB_NAME = DEMO_MODE ? "antonia-dagbok-demo" : "antonia-dagbok";
     // v2: lade till "courses"-store för escitalopram-omgångar.
     // v3: lade till "notes"-store för egna texter (stödkortet i Idag).
     const DB_VERSION = 3;
@@ -1651,22 +1724,27 @@
       valence:   ["😢", "😕", "😐", "🙂", "😄"],
       intensity: ["😌", "🙂", "😐", "😟", "😣"],
     };
+    // Text under varje emoji (index = värde − 1). Sparade värden är oförändrade.
+    const EMOJI_TEXT = {
+      valence:   ["Mycket dåligt", "Dåligt", "Okej", "Bra", "Mycket bra"],
+      intensity: ["Stabil", "Lite", "Märkbart", "Mycket", "Väldigt mycket"],
+    };
 
     // Konfiguration som driver renderingen av alla skattningsrader.
     // group bestämmer vilken container raden hamnar i.
     const MOOD_METRICS = [
       // KÄNSLOR
       { id: "humor",         group: "kanslor", label: "Humör",                 scale: "valence",   low: "dåligt", high: "bra" },
-      { id: "irritabilitet", group: "kanslor", label: "Irritabilitet",         scale: "intensity", low: "lite",   high: "mycket" },
-      { id: "angest",        group: "kanslor", label: "Ångest / oro",          scale: "intensity", low: "lite",   high: "mycket" },
-      { id: "sjalvkritik",   group: "kanslor", label: "Självkritik",           scale: "intensity", low: "lite",   high: "mycket" },
-      { id: "kanslighet",    group: "kanslor", label: "Känslighet",            scale: "intensity", low: "lite",   high: "mycket" },
-      { id: "intensitet",    group: "kanslor", label: "Intensitet på känslor", scale: "intensity", low: "lite",   high: "mycket" },
+      { id: "irritabilitet", group: "kanslor", label: "Irritabilitet",         scale: "intensity", low: "stabil", high: "mycket" },
+      { id: "angest",        group: "kanslor", label: "Ångest / oro",          scale: "intensity", low: "stabil", high: "mycket" },
+      { id: "sjalvkritik",   group: "kanslor", label: "Självkritik",           scale: "intensity", low: "stabil", high: "mycket" },
+      { id: "kanslighet",    group: "kanslor", label: "Känslighet",            scale: "intensity", low: "stabil", high: "mycket" },
+      { id: "intensitet",    group: "kanslor", label: "Intensitet på känslor", scale: "intensity", low: "stabil", high: "mycket" },
       { id: "delusion",      group: "kanslor", label: "Grad av delusion",      scale: "intensity", low: "ingen",  high: "stark" },
       // KROPP
       { id: "energi",        group: "kropp",   label: "Energi",                scale: "valence",   low: "lågt",   high: "högt" },
       { id: "magbesvar",     group: "kropp",   label: "Magbesvär (IBS/PCOS)",  scale: "intensity", low: "inga",   high: "mycket" },
-      { id: "stress",        group: "kropp",   label: "Stress / kortisol",     scale: "intensity", low: "lite",   high: "mycket" },
+      { id: "stress",        group: "kropp",   label: "Stress / kortisol",     scale: "intensity", low: "stabil", high: "mycket" },
       // SÖMN (kvalitet; antal timmar hanteras separat)
       { id: "sleepQuality",  group: "somn",    label: "Hur du sov",            scale: "valence",   low: "dåligt", high: "bra" },
     ];
@@ -1717,9 +1795,12 @@
         // (högt värde = mer besvär) visas därför ansiktena i omvänd ordning.
         // Bara visningen vänds – det sparade värdet 1–5 betyder samma som förr.
         const flip = m.scale === "intensity";
+        // Varje knapp: emoji + text under (texten används även som aria-label).
         let faceList = EMOJI[m.scale].map((emoji, i) =>
           `<button class="face" type="button" data-id="${m.id}" ` +
-          `data-value="${i + 1}" aria-label="${i + 1} av 5">${emoji}</button>`);
+          `data-value="${i + 1}" aria-label="${EMOJI_TEXT[m.scale][i]}">` +
+          `<span class="face-emoji">${emoji}</span>` +
+          `<span class="face-text">${EMOJI_TEXT[m.scale][i]}</span></button>`);
         if (flip) faceList = faceList.reverse();
         const faces = faceList.join("");
         const leftEnd = flip ? m.high : m.low;
@@ -2286,6 +2367,7 @@
     }
 
     async function maybeNotifyMorning() {
+      if (DEMO_MODE) return;   // inga riktiga notiser från påhittad data
       try {
         if (!("Notification" in window) || Notification.permission !== "granted") return;
         if (new Date().getHours() < 8) return;          // för tidigt på dygnet
@@ -2293,8 +2375,8 @@
         if (!active) return;                            // ingen omgång → ingen notis
         const days = await getDaysFor(active.omgangId);
         if (days.some((d) => d.date === todayISO())) return; // redan tagen idag
-        if (localStorage.getItem("med-notif-shown") === todayISO()) return; // max 1/dag
-        localStorage.setItem("med-notif-shown", todayISO());
+        if (localStorage.getItem(lsKey("med-notif-shown")) === todayISO()) return; // max 1/dag
+        localStorage.setItem(lsKey("med-notif-shown"), todayISO());
         new Notification("Dags att ta escitalopram 💊", {
           body: "Glöm inte din dos idag.",
           icon: "icons/icon-192.png",
@@ -2802,7 +2884,7 @@
     // Bygg stödkortet (eller bara en diskret länk en vanlig dag).
     function buildSupport(recentMood, helpsText, today) {
       const low = isLowPeriod(recentMood);
-      const hiddenToday = localStorage.getItem("support-hidden") === today;
+      const hiddenToday = localStorage.getItem(lsKey("support-hidden")) === today;
 
       if (!supportOpen && (!low || hiddenToday)) {
         return '<button type="button" class="card-link" data-act="support-open">' +
@@ -2861,7 +2943,7 @@
       if (!sig || !sig.dags || !sig.text) return "";
       if (sig.date < shiftDate(today, -2)) return "";
       if (courses.some((c) => c.active)) return "";
-      if (localStorage.getItem("signal-dismissed") === sig.date) return "";
+      if (localStorage.getItem(lsKey("signal-dismissed")) === sig.date) return "";
       let html = '<div class="card"><div class="support-title">Känner du igen det här? 💗</div>' +
         '<p class="status-sub" style="margin:6px 0 0">' + escapeHTML(sig.text) + "</p>";
       if (sig.liknar) {
@@ -2950,7 +3032,7 @@
           break;
         case "support-close":
           // Öppnat för hand → bara stäng. Visat automatiskt → dölj resten av dagen.
-          if (!supportOpen) localStorage.setItem("support-hidden", todayISO());
+          if (!supportOpen) localStorage.setItem(lsKey("support-hidden"), todayISO());
           supportOpen = false;
           supportEditing = false;
           await renderIdag();
@@ -2979,7 +3061,7 @@
           showView("medicin", "Medicin");
           break;
         case "signal-dismiss":
-          localStorage.setItem("signal-dismissed", actEl.dataset.date);
+          localStorage.setItem(lsKey("signal-dismissed"), actEl.dataset.date);
           await renderIdag();
           break;
         case "avoid-edit":
@@ -3541,7 +3623,7 @@
 
     // Be om en synk strax (samlar ihop flera sparningar till en körning).
     function scheduleSync() {
-      if (!sb || !syncUser || partnerMode) return;
+      if (DEMO_MODE || !sb || !syncUser || partnerMode) return;
       clearTimeout(_syncTimer);
       _syncTimer = setTimeout(sync, 1500);
     }
@@ -3644,7 +3726,7 @@
 
     // Kör en hel synk (hämta, sedan skicka). Tyst vid fel: försöker igen senare.
     async function sync() {
-      if (!sb || !syncUser || partnerMode) return;
+      if (DEMO_MODE || !sb || !syncUser || partnerMode) return;
       if (_syncRunning) { _syncAgain = true; return; }
       _syncRunning = true;
       try {
@@ -3671,6 +3753,15 @@
 
     // Visa rätt del av synk-kortet i Inställningar.
     function renderSyncUI() {
+      // Demoläge: ingen inloggning eller synk, bara en kort förklaring.
+      if (DEMO_MODE) {
+        document.getElementById("sync-off").hidden = false;
+        document.getElementById("sync-off").querySelector(".hint").textContent =
+          "Inloggning är avstängd i demoläget.";
+        document.getElementById("sync-login").hidden = true;
+        document.getElementById("sync-on").hidden = true;
+        return;
+      }
       document.getElementById("sync-off").hidden = !!sb;
       document.getElementById("sync-login").hidden = !sb || !!syncUser;
       document.getElementById("sync-on").hidden = !sb || !syncUser;
@@ -3764,6 +3855,7 @@
     }
 
     async function enableNotis() {
+      if (DEMO_MODE) { showToast("Notiser är av i demoläget"); return; }
       try {
         if ((await Notification.requestPermission()) !== "granted") { await renderNotisUI(); return; }
         const reg = await navigator.serviceWorker.ready;
@@ -3803,7 +3895,7 @@
 
     // En notis (eller en länk med #vy) öppnar rätt vy.
     function openViewByName(view) {
-      if (partnerMode) { showView("partner", "Översikt"); return; }
+      if (partnerMode && !DEMO_MODE) { showView("partner", "Översikt"); return; }
       const tab = document.querySelector('.tab[data-view="' + view + '"]:not(.partner-only)');
       if (tab) showView(view, tab.dataset.title);
     }
@@ -3826,8 +3918,10 @@
        Översikten sparas inte i IndexedDB – bara en kopia i localStorage så att
        den går att öppna utan nät. */
     function enterPartnerMode() {
+      if (DEMO_MODE) return;
       partnerMode = true;
       document.body.classList.add("partner");
+      renderDevUI();
       if (currentView !== "installningar") showView("partner", "Översikt");
     }
     function exitPartnerMode() {
@@ -3837,11 +3931,13 @@
       partnerMode = false;
       partnerData = null;
       document.body.classList.remove("partner");
+      renderDevUI();
       showView("idag", "Idag");
     }
 
     // Avgör om den inloggade är partner, och hämta i så fall översikten.
     async function checkPartner() {
+      if (DEMO_MODE) return;   // demoläget visar alltid hela appen
       if (localStorage.getItem("partner-user") === syncUser.id) {
         try { partnerData = JSON.parse(localStorage.getItem("partner-cache")); } catch (_) {}
         enterPartnerMode();
@@ -3861,6 +3957,34 @@
         // Funktionen saknas (inte uppsatt än) eller inget nät: behåll läget.
         console.warn("Kunde inte hämta översikten:", err);
       }
+    }
+
+    // Trend: jämför senaste veckan (idag och 6 dagar bakåt) med veckan före.
+    // Returnerar { arrow, text }.
+    function partnerTrend(days, today) {
+      const byDate = new Map((days || []).map((x) => [x.date, x]));
+      // Samla numeriska nivåer (1–5, högre = tyngre) för en veckas sju datum.
+      const weekLevels = (fromOffset) => {
+        const out = [];
+        for (let i = fromOffset; i < fromOffset + 7; i++) {
+          const x = byDate.get(shiftDate(today, -i));
+          if (x && x.level != null && !isNaN(Number(x.level))) out.push(Number(x.level));
+        }
+        return out;
+      };
+      const thisWeek = weekLevels(0);   // today-6 .. today
+      const lastWeek = weekLevels(7);   // today-13 .. today-7
+      // Minst tre loggade dagar per vecka, annars säger jämförelsen för lite.
+      const MIN_DAYS = 3;
+      // Skillnader under 0,4 på en 1–5-skala räknas som brus.
+      const THRESHOLD = 0.4;
+      if (thisWeek.length < MIN_DAYS) return { arrow: "·", text: "För lite loggat den här veckan för att se en trend" };
+      if (lastWeek.length < MIN_DAYS) return { arrow: "·", text: "För lite loggat förra veckan för att jämföra" };
+      const avg = (a) => a.reduce((s, v) => s + v, 0) / a.length;
+      const diff = avg(thisWeek) - avg(lastWeek);   // negativt = lättare (lägre = lättare)
+      if (diff <= -THRESHOLD) return { arrow: "↓", text: "Lättare än förra veckan" };
+      if (diff >= THRESHOLD) return { arrow: "↑", text: "Tyngre än förra veckan" };
+      return { arrow: "→", text: "Ungefär som förra veckan" };
     }
 
     function renderPartner() {
@@ -3901,6 +4025,29 @@
       }
       html += "</div>";
 
+      // Senaste 7 dagarna: trendrad + tre staplar (snitt per område).
+      html += '<div class="card"><div class="status-eyebrow">Senaste 7 dagarna</div>';
+      const trend = partnerTrend(d.days || [], today);
+      html += '<p class="status-sub" style="margin:8px 0 0"><b style="font-size:1.3rem">' +
+        trend.arrow + "</b> " + escapeHTML(trend.text) + "</p>";
+      // Staplar: bara om servern skickat de sammanlagda 7-dagarssnitten (areas7).
+      const a7 = d.areas7;
+      if (a7 && typeof a7 === "object") {
+        [["kanslor", "Känslor"], ["kropp", "Kropp"], ["somn", "Sömn"]].forEach(([key, label]) => {
+          if (a7[key] == null) {
+            html += barRowHTML(label, "–", 0, "");
+            return;
+          }
+          const m = Number(a7[key]);   // 1–5, högre = tyngre
+          const cls = levelClass(m);
+          const word = cls === "tung" ? "tung" : cls === "latt" ? "lätt" : "medel";
+          html += barRowHTML(label, word, (m - 1) / 4, "");
+        });
+        // Antal loggade dagar visas en gång för alla staplar.
+        html += '<p class="hint" style="margin:8px 0 0">' + (a7.logged || 0) + " av 7 dagar loggade</p>";
+      }
+      html += "</div>";
+
       const first = new Date(partnerMonth + "-01T00:00:00");
       const n = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
       const days = Array.from({ length: n }, (_, i) => {
@@ -3926,8 +4073,8 @@
         tile(past.filter((x) => x.med).length, "dagar med medicin") + "</div></div>";
 
       html += '<p class="hint" style="margin:12px 4px 0">Du ser en översikt: hur tung varje ' +
-        "dag har varit och när medicinen tagits. Det hon skriver och de enskilda " +
-        "skattningarna visas inte här.</p>" +
+        "dag har varit, en nivå per område (känslor, kropp, sömn) och när medicinen " +
+        "tagits. Det hon skriver och de enskilda skattningarna visas inte här.</p>" +
         '<button type="button" class="btn secondary" data-act="partner-refresh">Uppdatera</button>';
       el.innerHTML = html;
     }
@@ -3945,7 +4092,7 @@
       }
     });
 
-    if (sb) {
+    if (sb && !DEMO_MODE) {
       // Körs vid start (sparad inloggning) och vid in-/utloggning.
       sb.auth.onAuthStateChange((_event, session) => {
         const user = session ? session.user : null;
@@ -3992,6 +4139,112 @@
     // Be webbläsaren att inte rensa lagringen när utrymmet tryter.
     if (navigator.storage && navigator.storage.persist) {
       navigator.storage.persist().catch(() => {});
+    }
+
+    /* --- Utvecklare / demoläge ---
+       Kortet "Utvecklare" i Inställningar syns i partnerläge eller demoläge.
+       Demoläget använder en egen databas med påhittad data (se seedDemo). */
+    function renderDevUI() {
+      const card = document.getElementById("dev-card");
+      if (!card) return;
+      card.hidden = !(partnerMode || DEMO_MODE);
+      document.getElementById("btn-dev-demo-on").hidden = DEMO_MODE;
+      document.getElementById("btn-dev-demo-off").hidden = !DEMO_MODE;
+      document.getElementById("btn-dev-demo-reset").hidden = !DEMO_MODE;
+      document.getElementById("dev-hint").textContent = DEMO_MODE
+        ? "Demoläge är på: egen databas med påhittad data, ingen synk."
+        : "Se hur hennes app ser ut, med påhittad data. Din riktiga data rörs inte.";
+    }
+    function exitDemo() {
+      localStorage.removeItem("dev-demo");
+      location.reload();
+    }
+    document.getElementById("btn-dev-demo-on").addEventListener("click", () => {
+      localStorage.setItem("dev-demo", "1");
+      location.reload();
+    });
+    document.getElementById("btn-dev-demo-off").addEventListener("click", exitDemo);
+    document.getElementById("btn-demo-exit").addEventListener("click", exitDemo);
+    document.getElementById("btn-dev-demo-reset").addEventListener("click", async () => {
+      if (!DEMO_MODE) return;
+      if (!confirm("Återställa demodatan? Den påhittade datan görs om från början.")) return;
+      for (const store of STORES) await clearStore(store);
+      location.reload();
+    });
+    renderDevUI();
+
+    // Fyll demo-databasen med ~60 dagar påhittad data (bara om den är tom).
+    async function seedDemo() {
+      // Redan seedad? (Anteckningen skrivs sist, så en avbruten seed görs om.)
+      if (await getRecord("notes", "demo-seeded")) return;
+      const today = todayISO();
+      // Enkel slumpgenerator med fast frö så demon ser likadan ut varje gång.
+      let seed = 42;
+      const rnd = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+      const clamp5 = (v) => Math.min(5, Math.max(1, Math.round(v)));
+
+      // Två omgångar: en avslutad (dag -46..-40) och en pågående (börjar för 3 dagar sen).
+      const c1 = { omgangId: "demo-c1", startdatum: shiftDate(today, -46), slutdatum: shiftDate(today, -40), active: false };
+      const c2 = { omgangId: "demo-c2", startdatum: shiftDate(today, -3), slutdatum: null, active: true };
+      await addRecord("courses", c1);
+      await addRecord("courses", c2);
+      const inCourse = (date) =>
+        (date >= c1.startdatum && date <= c1.slutdatum) || date >= c2.startdatum;
+
+      // Dagar närmast före en omgång är tyngre (värken i cykeln).
+      const heavyDay = (i) => (i >= 46 && i <= 52) || i <= 5 || (i >= 18 && i <= 20);
+
+      for (let i = 59; i >= 0; i--) {
+        const date = shiftDate(today, -i);
+        // Grundnivå på besvär 1–5 för dagen (högt = tungt).
+        const trouble = (heavyDay(i) ? 3.8 : 2.2) + (rnd() - 0.5) * 1.4;
+        const scores = {};
+        MOOD_METRICS.forEach((m) => {
+          const t = clamp5(trouble + (rnd() - 0.5) * 1.2);
+          // valence: högt = bra, intensity: högt = mer besvär (samma som appen sparar)
+          scores[m.id] = m.scale === "valence" ? 6 - t : t;
+        });
+        scores.delusion = rnd() < 0.85 ? 1 : 2;
+        const rec = {
+          date,
+          scores,
+          sleepHours: Math.round((7.5 - (trouble - 2.5) * 0.8 + (rnd() - 0.5)) * 2) / 2,
+        };
+        // Några dagar får snabbval (id:n ur MOOD_TAGS).
+        if (trouble > 3.3 && rnd() < 0.6) {
+          rec.tags = MOOD_TAGS.filter(() => rnd() < 0.25).map((t) => t.id);
+          if (!rec.tags.length) rec.tags = [MOOD_TAGS[0].id];
+        }
+        if (i === 2) rec.note = "Påhittad anteckning för demon.";
+        await addRecord("mood", rec);
+
+        // Medicin tas på omgångens dagar.
+        if (inCourse(date)) {
+          const omgangId = date >= c2.startdatum ? c2.omgangId : c1.omgangId;
+          await addRecord("medication", { date, omgangId, dos: 10 });
+        }
+      }
+
+      // Några blödningar (två perioder). type/flow-id:n hämtas ur appens egna listor.
+      const bleedDays = [-28, -27, -26, -25, -24, -1, 0];
+      for (const off of bleedDays) {
+        await addRecord("bleeding", {
+          date: shiftDate(today, off),
+          type: "framslappt",
+          flow: off === -26 || off === -25 ? "rikligt" : "medel",
+        });
+      }
+      // Markera sist att demodatan är klar.
+      await addRecord("notes", { key: "demo-seeded" });
+    }
+    if (DEMO_MODE) {
+      seedDemo()
+        .then(() => {
+          // Ladda om Mående bara om den visar idag; annars uppdatera vyn.
+          if (moodDate === todayISO()) loadMoodForDate(todayISO());
+          refreshCurrentView();
+        })
+        .catch((err) => console.error("Kunde inte skapa demodata:", err));
     }
 
     // Öppna databasen direkt så stores skapas vid första start, och försök

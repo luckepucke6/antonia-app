@@ -120,7 +120,7 @@ partnern. Prenumerationer som svarar 404/410 tas bort.
 - Inget har körts mot det riktiga Supabase-projektet (ingen åtkomst härifrån):
   SQL-filen är inte körd, funktionen är inte utlagd, cron är inte schemalagd.
 - Inget riktigt anrop till Claude är gjort. `fallbacks: "default"` ihop med
-  strukturerad utdata (`output_config.format`) och modellen `claude-opus-5-5`
+  strukturerad utdata (`output_config.format`) och modellen `claude-sonnet-5-5`
   är inte provat mot API:et. Svarar API:et med 400 här, ta först bort
   `fallbacks`/`betas` och prova igen.
 - Inget riktigt push-utskick till Apples eller Googles push-tjänst. Kryptering

@@ -94,6 +94,9 @@ drop policy if exists records_viewer_select on public.records;
 --   humor, energi, sleepQuality: högt är bra  → tyngd = 6 - värde
 --   alla andra:                  högt är värre → tyngd = värde
 -- (samma regel som i appen och i Edge-funktionen). Null om inga skattningar.
+-- Dessutom returneras areas7: medel per område (kanslor, kropp, somn) över de
+-- senaste 7 dagarna (svensk tid) och antal loggade dagar. Bara sammanställda
+-- snitt, aldrig enskilda skattningar per dag.
 create or replace function public.partner_overview() returns jsonb
 language plpgsql stable security definer set search_path = '' as $$
 declare
@@ -102,6 +105,7 @@ declare
   v_days    jsonb;
   v_courses jsonb;
   v_signal  jsonb;
+  v_areas7  jsonb;
 begin
   -- Vems dagbok får den inloggade titta på? (Finns flera: den första.)
   select s.owner into v_owner
@@ -147,14 +151,44 @@ begin
       and (r.data ->> 'date') >= v_from
   )
   select coalesce(jsonb_agg(
-           jsonb_build_object('date', t.d, 'level', t.level, 'med', t.med)
+           jsonb_build_object('date', t.d, 'level', t.level,
+                              'med', t.med)
            order by t.d), '[]'::jsonb)
   into v_days
   from (
-    select coalesce(m.d, x.d) as d, m.level, (x.d is not null) as med
+    select coalesce(m.d, x.d) as d, m.level,
+           (x.d is not null) as med
     from mood m
     full join med x on x.d = m.d
   ) t;
+
+  -- Medel per område över de senaste 7 dagarna (idag och 6 dagar bakåt, svensk
+  -- tid). Samma vändregel (6 - v) som ovan, men bara sammanställt: inga värden
+  -- per dag lämnas ut.
+  select jsonb_build_object(
+           'kanslor', round(avg(w.v) filter (where w.k in ('humor', 'irritabilitet',
+                       'angest', 'sjalvkritik', 'kanslighet', 'intensitet', 'delusion')), 1),
+           'kropp',   round(avg(w.v) filter (where w.k in ('energi', 'magbesvar', 'stress')), 1),
+           'somn',    round(avg(w.v) filter (where w.k = 'sleepQuality'), 1),
+           'logged',  count(distinct w.d))
+  into v_areas7
+  from (
+    select r.key as d, e.key as k,
+           case when e.key in ('humor', 'energi', 'sleepQuality')
+                then 6 - e.value::numeric
+                else e.value::numeric end as v
+    from public.records r
+    cross join lateral jsonb_each_text(
+           case when jsonb_typeof(r.data -> 'scores') = 'object'
+                then r.data -> 'scores' else '{}'::jsonb end) e
+    where r.user_id = v_owner
+      and r.store = 'mood'
+      and r.deleted_at is null
+      and (r.data ->> 'deletedAt') is null
+      and r.key ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+      and r.key >= to_char((now() at time zone 'Europe/Stockholm')::date - 6, 'YYYY-MM-DD')
+      and e.value ~ '^[1-5](\.[0-9]+)?$'
+  ) w;
 
   select coalesce(jsonb_agg(
            jsonb_build_object(
@@ -188,6 +222,7 @@ begin
   return jsonb_build_object(
     'owner',   v_owner,
     'days',    v_days,
+    'areas7',  v_areas7,
     'courses', v_courses,
     'signal',  v_signal);   -- null om ingen koll har körts
 end;
