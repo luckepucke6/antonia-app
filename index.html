@@ -1086,21 +1086,48 @@
     .partner-info > summary::-webkit-details-marker { display: none; }
     .partner-info > summary .info-btn { display: inline-block; margin-left: 4px; }
     .partner-dot { flex: none; width: 18px; height: 18px; border-radius: 50%; background: var(--accent-soft); }
+    /* Lugnt läge: ihålig ring som syns i både ljust och mörkt tema. */
+    .partner-dot.calm { background: transparent; border: 1.5px solid var(--muted); box-sizing: border-box; }
     .partner-dot.tung { background: rgb(var(--tone-hi)); }
     .partner-dot.mellan { background: rgba(var(--tone-hi), 0.5); }
     .partner-dot.latt { background: rgba(var(--tone-hi), 0.32); }
     .card-link-arrow { flex: none; font-size: 1.3rem; color: var(--accent); }
-    /* Hopfällbar stödrad: summary ser ut som övriga diskreta rader. */
-    .support-fold > summary { list-style: none; display: block; }
+    /* Läget just nu: ett kort med hopfällbar stöddel längst ner. */
+    .lage-head { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+    .lage-head-title { flex: 1; min-width: 0; font-size: 1.05rem; font-weight: 600; }
+    /* ⓘ: 44 px tryckyta, själva cirkeln är mindre. */
+    .lage-info {
+      flex: none; width: 44px; height: 44px; padding: 0; margin-right: -8px;
+      display: flex; align-items: center; justify-content: center;
+      background: none; border: none; cursor: pointer; color: var(--muted);
+      -webkit-tap-highlight-color: transparent;
+    }
+    .lage-info span {
+      display: flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 50%;
+      font-size: 0.95rem; line-height: 1;
+    }
+    .lage-info[aria-expanded="true"] span { background: var(--accent-soft); color: var(--accent); }
+    .lage-title { font-size: 1.05rem; font-weight: 600; margin-top: 2px; }
+    .lage-actions .btn { margin-top: 10px; }
+    .lage-link { min-height: 44px; }
+    /* Stöddelen ligger i kortet, skild av en tunn linje. */
+    .support-fold { margin-top: 14px; border-top: 1px solid var(--line); }
+    .support-fold > summary { list-style: none; display: block; cursor: pointer; min-height: 44px; padding: 12px 0 0; font-weight: 550; }
+    .support-fold > summary::-webkit-details-marker { display: none; }
     /* Flex på ett inre element: äldre Safari klarar inte summary som flex-behållare. */
     .support-fold .card-link-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-    .support-fold > summary::-webkit-details-marker { display: none; }
     .support-fold > summary .card-link-arrow { transition: transform 0.18s ease; }
     .support-fold[open] > summary .card-link-arrow { transform: rotate(90deg); }
-    .support-fold > .card { margin-top: 10px; }
     @media (prefers-reduced-motion: reduce) {
       .support-fold > summary .card-link-arrow { transition: none; }
     }
+    /* Hopfälld incheckning: hennes fyra val i en rad. */
+    .quick-sum { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 12px; text-align: center; }
+    .quick-sum-emoji { display: block; font-size: 1.8rem; line-height: 1.2; }
+    .quick-sum-label { display: block; font-size: 0.72rem; color: var(--muted); overflow-wrap: normal; hyphens: auto; }
+    .quick-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+    .quick-btns .btn { flex: 1 1 140px; min-width: 0; }
 
     /* Statusbrickor överst på Idag: radbryts, aldrig horisontell scroll. */
     /* Högst 3 brickor i lika breda kolumner: alltid en rad, texten får radbrytas inuti. */
@@ -1378,6 +1405,10 @@
             som uppskattade. De blir vanliga dagar först när du sparar dem själv.</p>
             <p>Överst på Idag visar små brickor medicin, ev. paus och blödning. Ett tryck
             på medicinbrickan bockar av dagens tablett – ångra direkt om det blev fel.</p>
+            <p>Under incheckningen finns "Läget just nu". Där ser du om det verkar vara en
+            tyngre period (appen räknar på dina senaste tre dagar) och om AI-kollen
+            känner igen något från tidigare omgångar. Stödet för tyngre dagar ligger
+            hopfällt längst ner i kortet.</p>
             <p>Tom ruta betyder bara att du inte loggat. Det är helt okej.</p>
           </div>
         </details>
@@ -3444,22 +3475,51 @@
         "</span></div></div>";
     }
 
-    // Bygg snabbloggningskortet.
+    // Ändringsläge för det hopfällda kortet: datumet då hon tryckte "Ändra".
+    // Gäller bara samma dag (annat värde än todayISO() = av).
+    let quickEdit = "";
+
+    // Bygg snabbloggningskortet. Är alla fyra skalor ifyllda fälls kortet ihop
+    // till en sammanfattning med hennes val (utom i ändringsläge).
+    // Korta etiketter bara i den hopfällda sammanfattningen (smal rad med fyra kolumner).
+    const QUICK_SHORT = { humor: "Humör", angest: "Ångest", irritabilitet: "Irritation", magbesvar: "Mage" };
     function buildIdagMood(moodRec) {
       const scores = (moodRec && moodRec.scores) || {};
       const metrics = QUICK_KEYS.map((id) => MOOD_METRICS.find((m) => m.id === id));
       const filled = QUICK_KEYS.filter((id) => scores[id] != null).length;
       const done = filled === QUICK_KEYS.length;
       const flash = quickFlash ? ' <span class="quick-ok" aria-label="Sparat">✓</span>' : "";
+      // Är något avmarkerat slutar ändringsläget, så nästa fjärde tryck fäller ihop igen.
+      if (!done) quickEdit = "";
+      const editing = quickEdit === todayISO();
 
-      // Alla fyra skalor syns alltid, med hennes val markerade.
+      // Hopfälld sammanfattning: samma emoji som skalan visar för hennes val.
+      if (done && !editing) {
+        const faces = metrics.map((m) => {
+          const i = scores[m.id] - 1;
+          return '<div class="quick-sum-item"><span class="quick-sum-emoji">' + EMOJI[m.scale][i] +
+            '</span><span class="quick-sum-label">' + (QUICK_SHORT[m.id] || m.label) + "</span></div>";
+        }).join("");
+        const aria = metrics.map((m) => m.label + ": " + EMOJI_TEXT[m.scale][scores[m.id] - 1]).join(", ");
+        return '<div class="card" id="quick-card">' +
+          '<div class="support-title">Hur är det idag?' + flash + "</div>" +
+          '<div class="quick-done" style="margin-top:6px">Klart för idag 💗</div>' +
+          '<div class="quick-sum" role="img" aria-label="' + aria + '">' + faces + "</div>" +
+          '<div class="quick-btns">' +
+          '<button type="button" class="btn secondary" data-act="quick-edit">Ändra</button>' +
+          '<button type="button" class="btn secondary" data-act="mood">Fyll i mer i Mående</button>' +
+          "</div></div>";
+      }
+
+      // Utfälld: alla fyra skalor, med hennes val markerade.
       let html = '<div class="card" id="quick-card">';
       html += '<div class="support-title">Hur är det idag?' + flash + "</div>";
       html += '<p class="status-sub" style="margin:6px 0 0">Fyra tryck räcker.</p>';
       html += metrics.map((m) => quickRow(m, scores[m.id])).join("");
-      // När alla fyra är ifyllda: en lugn avslutning med väg till Mående.
+      // I ändringsläge: "Klar" fäller ihop kortet igen.
       if (done) {
         html += '<div class="quick-done">Klart för idag 💗</div>';
+        html += '<button type="button" class="btn" data-act="quick-done">Klar</button>';
         html += '<button type="button" class="btn secondary" data-act="mood">Fyll i mer i Mående</button>';
       }
       return html + "</div>";
@@ -3563,10 +3623,10 @@
        telefonen. Kortet ger aldrig medicinråd – det pekar bara på den plan hon
        redan har.
        Egen lista "Det här hjälper mig" sparas i notes (key "helps"). */
-    let supportOpen = false;     // öppnat för hand (visas även en bra dag)
     let supportEditing = false;  // redigerar den egna listan
+    let supportDraft = null;     // osparad text i listan (bevaras vid omritning/hopfällning)
     let supportFoldDay = "";   // dagen valet gäller; en ny dag börjar alltid hopfälld
-    let supportFoldOpen = false; // stödraden är utfälld (kommer ihåg valet mellan omritningar)
+    let supportFoldOpen = false; // stödraden i Läget-kortet är utfälld (kommer ihåg valet mellan omritningar)
 
     function escapeHTML(str) {
       return String(str).replace(/[<>&"]/g, (c) =>
@@ -3625,37 +3685,19 @@
         tips.map((t) => "<li>" + t + "</li>").join("") + "</ul>";
     }
 
-    // Bygg stödkortet (eller bara en diskret länk en vanlig dag).
-    function buildSupport(recentMood, helpsText, today) {
-      const low = isLowPeriod(recentMood);
-      const hiddenToday = localStorage.getItem(lsKey("support-hidden")) === today;
-
-      if (!supportOpen && (!low || hiddenToday)) {
-        return '<button type="button" class="card-link" data-act="support-open">' +
-          "<span>💗 Stöd för tyngre dagar</span>" +
-          '<span class="card-link-arrow">›</span></button>';
-      }
-
-      // Allt stöd ligger bakom en hopfälld rad som fälls ut vid tryck.
-      const foldTitle = low ? "💗 En tyngre period – det här kan hjälpa" : "💗 Stöd för tyngre dagar";
+    // Hopfällbar stöddel längst ner i Läget-kortet. Hennes egna ord kommer först.
+    function buildSupportFold(recentMood, helpsText, foldTitle) {
       let html = '<details class="support-fold"' + (supportFoldOpen && supportFoldDay === todayISO() ? " open" : "") + ">" +
-        '<summary class="card-link"><span class="card-link-row"><span>' + foldTitle + "</span>" +
+        '<summary><span class="card-link-row"><span>' + foldTitle + "</span>" +
         '<span class="card-link-arrow">›</span></span></summary>';
-      html += '<div class="card">';
-      if (low) {
-        html += '<div class="support-title">Det verkar vara en tyngre period just nu 💗</div>';
-        html += '<p class="status-sub" style="margin:6px 0 0">Det du känner är ' +
-                "verkligt. Här är några saker som kan göra dagen lite lättare.</p>";
-      } else {
-        html += '<div class="support-title">Stöd för tyngre dagar 💗</div>';
-      }
+      html += "<div>";
 
       // Hennes egna ord kommer först – de väger tyngst en tung dag.
       html += '<div class="support-group">Det här hjälper mig</div>';
-      if (supportEditing) {
+      if (supportEditing || supportDraft !== null) {
         html += '<textarea class="note" id="support-helps" rows="5" placeholder="' +
                 'Till exempel: ringa mamma, gå ut med hunden, min spellista …">' +
-                escapeHTML(helpsText) + "</textarea>";
+                escapeHTML(supportDraft !== null ? supportDraft : helpsText) + "</textarea>";
         html += '<button type="button" class="btn" data-act="support-save">Spara</button>';
       } else if (helpsText) {
         html += '<div class="support-own">' + escapeHTML(helpsText) + "</div>";
@@ -3677,42 +3719,88 @@
               "en plan för de här perioderna? Nu kan vara läge att titta på den.</p>";
       html += '<button type="button" class="text-btn" data-act="support-med">Öppna Medicin</button>';
 
-      html += '<button type="button" class="btn secondary" data-act="support-close">' +
-              (low && !supportOpen ? "Dölj för idag" : "Stäng") + "</button>";
+      html += '<button type="button" class="btn secondary" data-act="support-close">Stäng</button>';
       return html + "</div></details>";
     }
 
-    /* --- "Känner du igen det här?" ---
-       Servern (Edge Function "daglig-koll") jämför varje kväll de senaste
-       dagarna med hur tidigare omgångar började och sparar resultatet i
-       "notes" under nyckeln "signal": { date, dags, sakerhet, liknar, text }.
-       Kortet visas om signalen är färsk, ingen omgång pågår och hon inte har
-       tryckt "Inte nu" för just den signalen. */
-    function buildSignal(sig, courses, today) {
-      if (!sig || !sig.dags || !sig.text) return "";
-      if (sig.date < shiftDate(today, -2)) return "";
-      if (courses.some((c) => c.active)) return "";
-      if (localStorage.getItem(lsKey("signal-dismissed")) === sig.date) return "";
-      let html = '<div class="card"><div class="support-title">Känner du igen det här? 💗</div>' +
-        '<p class="status-sub" style="margin:6px 0 0">' + escapeHTML(sig.text) + "</p>";
-      if (sig.liknar) {
-        html += '<button type="button" class="text-btn" data-act="signal-see" data-date="' +
-                escapeHTML(sig.liknar) + '">Se ' + fmtLong(sig.liknar) + " i Mönster</button>";
+    /* --- Läget just nu ---
+       Ett kort under incheckningen som alltid syns. Innehållet, i prioritetsordning:
+       1. AI-signalen "Känner du igen det här?" (Edge Function "daglig-koll" jämför
+          varje kväll med tidigare omgångar och sparar { date, dags, sakerhet,
+          liknar, text } i "notes" under "signal"). Visas om den är högst två dagar
+          gammal, ingen omgång pågår och hon inte tryckt "Inte nu".
+       2. Tyngre period – regelbaserad (isLowPeriod), inte AI.
+       3. Inget loggat de tre senaste dagarna.
+       4. Lugnt.
+       Längst ner i kortet ligger en hopfälld stöddel. */
+    let lageInfoOpen = false;   // ⓘ-förklaringen är öppen
+    const LAGE_INFO = "Det här är en enklare regel än \"tung dag\" i Mönster, som bygger på dina " +
+      "genomsnitt. Här räknas en dag som tung om humöret är Dåligt eller sämre, eller om ångest, " +
+      "irritabilitet eller självkritik är Mycket eller mer. Tyngre period betyder att idag är tung " +
+      "eller att minst två av de tre senaste dagarna var det. Dagar du har uppskattat i efterhand " +
+      "räknas inte. AI-kollen jämför varje kväll de senaste dagarna med dina tidigare omgångar.";
+
+    function buildLage(recentMood, sig, courses, helpsText, today) {
+      // Dagar hon uppskattat i efterhand räknas inte som tunga här (kopior, posterna rörs inte).
+      const rm = recentMood.map((r) => (r && r.estimated ? { ...r, scores: {} } : r));
+      const low = isLowPeriod(rm);
+      const sigShown = !!(sig && sig.dags && sig.text && sig.date >= shiftDate(today, -2) &&
+        !courses.some((c) => c.active) &&
+        localStorage.getItem(lsKey("signal-dismissed")) !== sig.date);
+      const heavy = low || sigShown;
+
+      let body = "";
+      if (sigShown) {
+        // 1. AI-signal
+        body += '<div class="lage-title">Känner du igen det här?</div>' +
+          '<p class="status-sub" style="margin:6px 0 0">' + escapeHTML(sig.text) + "</p>";
+        body += '<div class="lage-actions">';
+        if (sig.liknar) {
+          body += '<button type="button" class="btn secondary" data-act="signal-see" data-date="' +
+            escapeHTML(sig.liknar) + '">Se liknande dagar</button>';
+        }
+        body += '<button type="button" class="btn secondary" data-act="signal-start">Öppna Medicin</button>' +
+          '<button type="button" class="btn secondary" data-act="signal-dismiss" data-date="' +
+          escapeHTML(sig.date) + '">Inte nu</button></div>';
+      } else if (low) {
+        // 2. Tyngre period (regelbaserad)
+        // Texten ska stämma med exakt vilka dagar som var tunga.
+        const hv = rm.map(isHeavyDay);
+        const why = hv[0] ? "Idag verkar vara en tung dag."
+          : (hv[1] && hv[2]) ? "Igår och i förrgår var tunga dagar."
+          : "2 av de 3 senaste dagarna har varit tunga.";
+        body += '<div class="lage-title">Det verkar vara en tyngre period</div>' +
+          '<p class="status-sub" style="margin:6px 0 0">' + why + " Det du känner är verkligt.</p>";
+      } else if (recentMood.every((r) => !r)) {
+        // 3. Inget loggat – ingen skuld
+        body += '<p class="status-sub" style="margin:8px 0 0">Läget syns här när du har loggat några dagar.</p>';
+      } else {
+        // 4. Lugnt
+        body += '<p class="status-sub" style="margin:8px 0 0">Inga tecken på en tyngre period just nu.</p>' +
+          '<button type="button" class="text-btn lage-link" data-act="monster">Se mönster ›</button>';
       }
-      html += '<button type="button" class="btn" data-act="signal-start">Öppna Medicin</button>' +
-              '<button type="button" class="btn secondary" data-act="signal-dismiss" data-date="' +
-              escapeHTML(sig.date) + '">Inte nu</button>';
+
+      let html = '<div class="card lage-card">' +
+        '<div class="lage-head"><span class="partner-dot' + (heavy ? " tung" : " calm") + '" aria-hidden="true"></span>' +
+        '<span class="lage-head-title">Läget just nu</span>' +
+        '<button type="button" class="lage-info" data-act="lage-info" aria-label="Hur räknas det?" ' +
+        'aria-controls="lage-info-text" aria-expanded="' + lageInfoOpen + '"><span>ⓘ</span></button></div>' +
+        '<p class="hint info-text" id="lage-info-text"' + (lageInfoOpen ? "" : " hidden") + ">" +
+        LAGE_INFO + "</p>" + body;
+      html += buildSupportFold(recentMood, helpsText,
+        heavy ? "💗 Det här kan hjälpa" : "💗 Stöd för tyngre dagar");
       return html + "</div>";
     }
 
     // Undvik-listan: hennes egen text om sådant hon vill undvika (t.ex. mat
     // som ger magont). Sparas i "notes" under nyckeln "avoid".
     let avoidEditing = false;
+    let avoidDraft = null;   // osparad text i undvik-listan (bevaras vid omritning)
     function buildAvoid(text) {
       if (avoidEditing) {
         return '<div class="card"><div class="status-eyebrow">Undvik</div>' +
           '<textarea class="note" id="avoid-text" rows="4" placeholder="' +
-          'Till exempel: äpple (ont i magen) …">' + escapeHTML(text) + "</textarea>" +
+          'Till exempel: äpple (ont i magen) …">' + escapeHTML(avoidDraft !== null ? avoidDraft : text) + "</textarea>" +
           '<button type="button" class="btn" data-act="avoid-save">Spara</button></div>';
       }
       if (!text) {
@@ -3729,6 +3817,17 @@
     let welcomeDecision = { date: "", value: false };
     async function renderIdag() {
       const today = todayISO();
+      // Spara osparad text ur textfälten innan de ritas om från sparad data.
+      const sh = document.getElementById("support-helps");
+      if (sh && (supportEditing || supportDraft !== null)) supportDraft = sh.value;
+      const av = document.getElementById("avoid-text");
+      if (av && avoidEditing) avoidDraft = av.value;
+      // Kom ihåg om fokus låg i incheckningskortet (och på vilken skala).
+      const ae = document.activeElement;
+      const qcOld = document.getElementById("quick-card");
+      const hadQuickFocus = !!(qcOld && ae && qcOld.contains(ae));
+      const focusFace = hadQuickFocus && ae.matches && ae.matches(".face[data-qid]")
+        ? { qid: ae.dataset.qid, value: ae.dataset.value } : null;
       const [moodRec, courses, meds, bleed, mood1, mood2, helps, avoid, signal, allMood, pauses] = await Promise.all([
         getRecord("mood", today), getAll("courses"),
         getAll("medication"), getAll("bleeding"),
@@ -3764,27 +3863,42 @@
       let html = '<div class="greeting">' +
         (welcomeBack ? "Välkommen tillbaka" : greetingFor(new Date())) + " 💗</div>";
       html += '<div class="greeting-date">' + dateStr + "</div>";
-      const support = buildSupport(recentMood, (helps && helps.text) || "", today);
-      // Stödet är alltid hopfällt. En tyngre period: raden ligger direkt under
-      // snabbloggningen så den är lätt att hitta. Annars: diskret rad längst ner.
-      const supportFold = support.startsWith("<details");
-      const supportTop = supportFold && isLowPeriod(recentMood);
+      // Ordning: statusbrickor, incheckning, Läget just nu, undvik.
       html += buildIdagChips(courses, meds, pauses, bleed, today);
       html += buildIdagMood(moodRec);
-      if (supportTop) html += support;
-      html += buildSignal(signal, courses, today);
-      // Längst ner: undvik och (om inte tung period) stödraden.
+      html += buildLage(recentMood, signal, courses, (helps && helps.text) || "", today);
       html += buildAvoid((avoid && avoid.text) || "");
-      if (!supportTop) html += support;
       quickFlash = false;
 
       idagContent.innerHTML = html;
+
+      // Flytta fokus rätt när kortet fälls ihop/ut, men bara om fokus var i kortet.
+      if (hadQuickFocus) {
+        const qc = document.getElementById("quick-card");
+        let target = null;
+        if (qc) {
+          if (focusFace && !qc.querySelector("[data-act=quick-done]")) {
+            // Fortfarande utfälld och ofullständig: behåll fokus på samma val.
+            target = qc.querySelector('.face[data-qid="' + focusFace.qid + '"][data-value="' + focusFace.value + '"]');
+          }
+          target = target || qc.querySelector("[data-act=quick-edit]") ||
+            qc.querySelector("[data-act=quick-done]") || qc.querySelector(".face");
+        }
+        if (target) target.focus({ preventScroll: true });
+      }
     }
 
     // Kom ihåg om stödraden är öppen (toggle bubblar inte, därför capture).
     idagContent.addEventListener("toggle", (e) => {
       if (e.target.classList && e.target.classList.contains("support-fold")) {
         supportFoldOpen = e.target.open; supportFoldDay = todayISO();
+        // Hopfälls raden mitt i redigering: spara utkastet och släpp redigeringsläget
+        // så att uppdateringar av vyn inte blockeras. Utkastet visas igen vid öppning.
+        const ta = e.target.querySelector("#support-helps");
+        if (!e.target.open && supportEditing && ta) {
+          supportDraft = ta.value;
+          supportEditing = false;
+        }
       }
     }, true);
 
@@ -3826,16 +3940,31 @@
         case "med-open":
           showView("medicin", "Medicin");
           break;
-        case "support-open":
-          supportOpen = true;
-          supportFoldOpen = true; supportFoldDay = todayISO();             // visa innehållet direkt efter tryck
+        case "quick-edit":
+          quickEdit = todayISO();
           await renderIdag();
           break;
+        case "quick-done":
+          quickEdit = "";
+          await renderIdag();
+          break;
+        case "monster":
+          showView("monster", "Mönster");
+          break;
+        case "lage-info": {
+          // Visa/dölj förklaringen utan omritning.
+          lageInfoOpen = !lageInfoOpen;
+          actEl.setAttribute("aria-expanded", String(lageInfoOpen));
+          document.getElementById("lage-info-text").hidden = !lageInfoOpen;
+          break;
+        }
         case "support-close":
-          // Öppnat för hand → bara stäng. Visat automatiskt → dölj resten av dagen.
-          if (!supportOpen) localStorage.setItem(lsKey("support-hidden"), todayISO());
-          supportOpen = false;
           supportFoldOpen = false; supportFoldDay = todayISO();
+          {
+            // Behåll osparad text som utkast när fältet stängs.
+            const ta = document.getElementById("support-helps");
+            if (supportEditing && ta) supportDraft = ta.value;
+          }
           supportEditing = false;
           await renderIdag();
           break;
@@ -3847,6 +3976,7 @@
           const text = document.getElementById("support-helps").value.trim();
           await addRecord("notes", { key: "helps", text });
           supportEditing = false;
+          supportDraft = null;
           showToast("Sparat ✓");
           await renderIdag();
           break;
@@ -3874,6 +4004,7 @@
           const text = document.getElementById("avoid-text").value.trim();
           await addRecord("notes", { key: "avoid", text });
           avoidEditing = false;
+          avoidDraft = null;
           showToast("Sparat ✓");
           await renderIdag();
           break;

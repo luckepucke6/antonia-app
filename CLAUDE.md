@@ -53,7 +53,7 @@ sections:
 
 There is a fourth store, `courses` (`keyPath: "omgangId"`), for medication
 courses. Later sections in the script: (e) Mående, (f) Medicin, (g) Blödningar,
-(h) Idag (incl. the support card for heavy periods), (i) Sync, (j) Mönster
+(h) Idag (incl. the "Läget just nu" card with the support fold for heavy periods), (i) Sync, (j) Mönster
 (month calendar coloured by a chosen metric, bar statistics built on the share
 of "heavy days" — see `dayClass` — and a printable report). There is also a fifth
 store, `notes` (`keyPath: "key"`). Settings is opened from the gear in the header.
@@ -87,6 +87,14 @@ Things that live in existing stores rather than their own:
 - Scales where a high value means more trouble are drawn mirrored in the
   Mående view so the positive end is always on the right. Only the display is
   flipped; stored values keep their meaning.
+- Idag order: greeting -> status chips -> "Hur är det idag?" -> "Läget just nu" -> Undvik.
+  The check-in collapses to a summary of her four faces once all four scales are
+  filled (`quickEdit` = date string, "Ändra"/"Klar" toggles it, only valid for today).
+  `buildLage` is one card that is always shown: AI signal (`daglig-koll`, "Känner du igen
+  det här?") > heavy period > nothing logged in 3 days > calm. "Tyngre period" is
+  rule-based (`isLowPeriod`: today heavy or 2 of the last 3 days), the signal is AI.
+  The support content (`buildSupportFold`, `<details class="support-fold">`) sits inside
+  the card, always collapsed by default (`supportFoldOpen`/`supportFoldDay`).
 - Settings has two imports: "Importera" **replaces** everything, "Lägg till
   från fil" (`mergeAll`) only adds what is missing and never overwrites.
 
@@ -160,7 +168,8 @@ Setup steps (VAPID keys, Edge Function, schedule) are in
 - **Signal**: `notes` key `signal` = `{ date, dags, sakerhet, liknar, text,
   text_partner }`, written server-side by the Edge Function
   `supabase/functions/daglig-koll` and synced down like any note. Idag shows
-  the "Känner du igen det här?" card (`buildSignal`) when it is at most two
+  the signal ("Känner du igen det här?") inside the "Läget just nu" card
+  (`buildLage`) when it is at most two
   days old, no course is active and "Inte nu" has not been pressed
   (`localStorage` `signal-dismissed`).
 - **Partner mode**: if the logged-in user is a `viewer` in `shares`,
