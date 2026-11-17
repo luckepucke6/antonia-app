@@ -179,6 +179,21 @@
       font-size: 0.82rem;
       color: var(--muted);
     }
+    /* ⓘ-knapp och förklaringstext i Mönster. */
+    .card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .info-btn {
+      border: 1px solid var(--line); background: transparent; color: var(--muted);
+      border-radius: 50%; width: 28px; height: 28px; font-size: 0.95rem; line-height: 1;
+      cursor: pointer; flex: none; padding: 0;
+    }
+    .info-btn[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); }
+    .info-text { margin: 6px 0 0; }
+    .info-text[hidden] { display: none; }
+    .more-stats > summary {
+      cursor: pointer; font-weight: 700; padding: 14px 4px; color: var(--text);
+    }
+    .insight-list { margin: 8px 0 0; padding-left: 18px; }
+    .insight-list li { margin: 6px 0; }
 
     /* ========================================================================
        FLIK-RAD (fast bottom tab bar i iOS-stil)
@@ -798,6 +813,9 @@
     .m-med.soft { opacity: 0.4; }
     .m-bleed { width: 7px; height: 7px; border-radius: 50%; background: #A8404F; }
     .m-pill { width: 6px; height: 6px; background: #B8862B; transform: rotate(45deg); }
+    /* Uppehåll i p-pillren: liten ring (synlig i både ljust och mörkt läge). */
+    .m-pause { width: 7px; height: 7px; border-radius: 50%; background: transparent;
+      border: 2px solid var(--accent); box-sizing: border-box; }
     .cal-legend {
       display: flex;
       flex-wrap: wrap;
@@ -928,6 +946,11 @@
     .bleed-tag.mellan  { color: var(--muted);  background: var(--accent-soft); }
     .bleed-tag.mens    { color: var(--on-accent);          background: var(--accent); }
     .bleed-tag.blandat { color: var(--accent); background: var(--accent-soft); }
+    .bleed-tag.bortfall { color: var(--accent); background: var(--accent-soft); border: 1px dashed var(--accent); }
+    /* Rader i uppehållskortet (Medicin). */
+    .pause-row { display: flex; justify-content: space-between; align-items: center;
+      gap: 8px; padding: 6px 0; font-size: 0.9rem; }
+    .pause-row .day-del { flex: none; }
 
     /* Detaljrad i en utfälld händelse: datum + flöde/mående + redigera/ta bort. */
     .bleed-day { padding: 9px 0; }
@@ -1169,6 +1192,9 @@
         <p class="field-label">Datum</p>
         <!-- max sätts till idag av JS; ingen loggning i framtiden. -->
         <input type="date" id="bleed-date" />
+
+        <!-- Förslag om bortfallsblödning (visas av JS när uppehåll i p-piller är aktuellt). -->
+        <p class="hint" id="bleed-suggest" hidden></p>
 
         <p class="field-label">Typ</p>
         <div class="dose-group" id="bleed-type"></div>
@@ -2276,33 +2302,125 @@
         .sort();
     }
 
-    function buildPillCard(packDates) {
+    /* --- Uppehåll i p-pillren ---
+       En post per uppehåll i "notes": { key: "ppaus:YYYY-MM-DD", start, end }.
+       start = första dagen utan piller, end = dagen hon började igen (null = pågår).
+       Uppehållsdagar: start <= dag < end (pågående: start <= dag <= idag). */
+    const PPAUS_PREFIX = "ppaus:";
+    const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+    // Alla uppehåll, äldst först.
+    async function getPauses() {
+      return (await getAll("notes"))
+        .filter((n) => String(n.key).startsWith(PPAUS_PREFIX))
+        .map((n) => ({
+          key: n.key,
+          start: n.start || String(n.key).slice(PPAUS_PREFIX.length),
+          end: n.end || null,
+        }))
+        // Ogiltiga datum: släng posten (start) eller behandla som pågående (end).
+        .filter((p) => ISO_DATE_RE.test(p.start))
+        .map((p) => ({ key: p.key, start: p.start, end: ISO_DATE_RE.test(p.end) ? p.end : null }))
+        .sort((a, b) => a.start.localeCompare(b.start));
+    }
+    // Det pågående uppehållet (om något).
+    function activePause(pauses) {
+      return pauses.find((p) => !p.end) || null;
+    }
+    // Ligger datumet i ett uppehåll? → { pause, n } (n = dag nummer), annars null.
+    function pauseDay(pauses, date) {
+      const today = todayISO();
+      for (const p of pauses) {
+        if (date >= p.start && (p.end ? date < p.end : date <= today))
+          return { pause: p, n: daysBetween(p.start, date) + 1 };
+      }
+      return null;
+    }
+    // Är datumet inom `days` dagar från och med dagen ett uppehåll tog slut?
+    function pauseRecentlyEnded(pauses, date, days) {
+      return pauses.some((p) => p.end && date >= p.end &&
+        daysBetween(p.end, date) < days);
+    }
+
+    let pauseDateOpen = false;  // datumfältet "Började uppehållet tidigare?" är öppet
+
+    function buildPillCard(packDates, pauses) {
       const today = todayISO();
       const last = packDates[packDates.length - 1];
+      const ap = activePause(pauses);
       let html = '<div class="card"><div class="status-eyebrow" ' +
                  'style="color:var(--muted)">P-piller</div>';
+
+      // Pågående uppehåll: visa dag, "Började igen" och ev. ångra.
+      if (ap) {
+        const n = daysBetween(ap.start, today) + 1;
+        html += '<p class="status-sub" style="margin:8px 0 4px"><strong>Uppehåll pågår – dag ' +
+                n + "</strong><br>sedan " + fmtLong(ap.start) + "</p>" +
+                '<p class="hint" style="margin:0 0 12px">Blöder du nu? Logga det som ' +
+                "bortfallsblödning under Blödningar.</p>" +
+                '<button type="button" class="btn" data-act="pause-end">Började igen</button>';
+        if (ap.start === today)
+          html += '<button type="button" class="text-btn" data-act="pause-undo">Ångra</button>';
+        html += buildPauseHistory(pauses);
+        // Kartstart visas fortfarande nedan som vanligt.
+        return html + buildPillPack(packDates, last, today) + "</div>";
+      }
+
+      html += buildPillPack(packDates, last, today);
+      // Inget pågående uppehåll: knapp för att börja ett, och ett datumfält för tidigare start.
+      html += '<button type="button" class="btn secondary" data-act="pause-start">' +
+              "Jag gör uppehåll</button>" +
+              '<button type="button" class="text-btn" data-act="pause-date-toggle">' +
+              "Började uppehållet tidigare?</button>";
+      if (pauseDateOpen) {
+        html += '<div class="pause-date-row" style="margin-top:8px">' +
+                '<input type="date" id="pause-date" max="' + today + '" value="' + today + '" />' +
+                '<button type="button" class="btn" data-act="pause-start-date">Spara</button></div>';
+      }
+      html += buildPauseHistory(pauses);
+      return html + "</div>";
+    }
+
+    // Lista över tidigare (avslutade) uppehåll, högst fem senaste.
+    function buildPauseHistory(pauses) {
+      const done = pauses.filter((p) => p.end).slice(-5).reverse();
+      if (!done.length) return "";
+      let html = '<div class="status-eyebrow" style="color:var(--muted);margin-top:16px">' +
+                 "Tidigare uppehåll</div>";
+      done.forEach((p) => {
+        html += '<div class="pause-row"><span>' + fmtShort(p.start) + " – " +
+                fmtShort(shiftDate(p.end, -1)) + " · " +
+                dagar(daysBetween(p.start, p.end)) + "</span>" +
+                '<button type="button" class="day-del" data-act="pause-del" data-key="' +
+                escapeHTML(p.key) + '">Ta bort</button></div>';
+      });
+      return html;
+    }
+
+    // Kartstart-delen av kortet (text + knapp), oförändrad från tidigare.
+    function buildPillPack(packDates, last, today) {
+      let html = "";
       if (!last) {
         html += '<p class="status-sub" style="margin:8px 0 12px">Ingen karta ' +
                 "loggad ännu. Tryck när du börjar på en ny.</p>";
       } else if (last === today) {
         html += '<p class="status-sub" style="margin:8px 0 0">Ny karta startad idag ✓</p>' +
                 '<button type="button" class="text-btn" data-act="pill-undo">Ångra</button>';
-        return html + "</div>";
       } else {
         const days = Math.round(
           (new Date(today + "T00:00:00") - new Date(last + "T00:00:00")) / 864e5);
         html += '<p class="status-sub" style="margin:8px 0 12px">Senaste kartan ' +
                 "startade " + fmtLong(last) + " (" + dagar(days) + " sedan).</p>";
       }
-      html += '<button type="button" class="btn secondary" data-act="pill-start">' +
-              "Ny karta startad idag</button>";
-      return html + "</div>";
+      if (last !== today)
+        html += '<button type="button" class="btn secondary" data-act="pill-start">' +
+                "Ny karta startad idag</button>";
+      return html;
     }
 
     // Bygg om hela Medicin-vyn från databasen. Anropas vid visning + efter åtgärd.
     async function renderMedicin() {
-      const [courses, meds, packDates] = await Promise.all([
-        getAll("courses"), getAll("medication"), getPillPackDates(),
+      const [courses, meds, packDates, pauses] = await Promise.all([
+        getAll("courses"), getAll("medication"), getPillPackDates(), getPauses(),
       ]);
       const active = courses.find((c) => c.active) || null;
 
@@ -2324,7 +2442,7 @@
       html += buildStatus(active, activeDays);
       if (!active) html += buildStats(courses, daysByCourse);
       html += buildHistory(courses, daysByCourse);
-      html += buildPillCard(packDates);
+      html += buildPillCard(packDates, pauses);
 
       medicinContent.innerHTML = html;
     }
@@ -2417,14 +2535,81 @@
         case "backdate": await backdateDay(); break;
         case "end":      await endCourse(); break;
         case "del-day":  await deleteDay(actEl.dataset.id); break;
-        case "pill-start":
-          await addRecord("notes", { key: PPILLER_PREFIX + todayISO(), date: todayISO() });
-          showToast("Ny karta loggad ✓");
+        case "pill-start": {
+          // Ny karta = hon har börjat igen: avsluta ett pågående uppehåll samtidigt.
+          // Kartan minns vilket uppehåll den avslutade, så att "Ångra" kan öppna det igen.
+          const runningPause = activePause(await getPauses());
+          const pack = { key: PPILLER_PREFIX + todayISO(), date: todayISO() };
+          if (runningPause) pack.closedPause = { key: runningPause.key, start: runningPause.start };
+          await addRecord("notes", pack);
+          if (runningPause) {
+            if (runningPause.start === todayISO()) await deleteRecord("notes", runningPause.key);
+            else await addRecord("notes", { key: runningPause.key, start: runningPause.start, end: todayISO() });
+          }
+          showToast(runningPause ? "Ny karta loggad – uppehållet är avslutat ✓" : "Ny karta loggad ✓");
           await renderMedicin();
           break;
-        case "pill-undo":
-          await deleteRecord("notes", PPILLER_PREFIX + todayISO());
+        }
+        case "pill-undo": {
+          const packKey = PPILLER_PREFIX + todayISO();
+          const pack = await getRecord("notes", packKey);
+          await deleteRecord("notes", packKey);
+          // Avslutade kartan ett uppehåll? Då pågår det igen.
+          const cp = pack && pack.closedPause;
+          if (cp && cp.key && ISO_DATE_RE.test(cp.start || ""))
+            await addRecord("notes", { key: cp.key, start: cp.start, end: null });
           await renderMedicin();
+          break;
+        }
+        // Börja ett uppehåll idag.
+        case "pause-start":
+          await addRecord("notes", { key: PPAUS_PREFIX + todayISO(), start: todayISO(), end: null });
+          showToast("Uppehåll loggat ✓");
+          await renderMedicin();
+          break;
+        // Visa/dölj datumfältet för ett uppehåll som började tidigare.
+        case "pause-date-toggle":
+          pauseDateOpen = !pauseDateOpen;
+          await renderMedicin();
+          break;
+        // Spara ett uppehåll med valt startdatum (inte i framtiden).
+        case "pause-start-date": {
+          const date = (document.getElementById("pause-date") || {}).value;
+          if (!date) { showToast("Välj ett datum först"); break; }
+          if (date > todayISO()) { showToast("Kan inte logga framtida datum"); break; }
+          // Neka om datumet redan finns eller ligger före/inom ett tidigare uppehåll.
+          const prev = await getPauses();
+          const lastEnd = prev.reduce((m, p) => (p.end && p.end > m ? p.end : m), "");
+          if (prev.some((p) => p.start === date) || (lastEnd && date < lastEnd)) {
+            showToast("Det datumet krockar med ett tidigare uppehåll");
+            break;
+          }
+          await addRecord("notes", { key: PPAUS_PREFIX + date, start: date, end: null });
+          pauseDateOpen = false;
+          showToast("Uppehåll loggat ✓");
+          await renderMedicin();
+          break;
+        }
+        // Hon började med pillren igen: sätt slutdatum (eller ta bort om det började idag).
+        case "pause-end": {
+          const ap = activePause(await getPauses());
+          if (!ap) break;
+          if (ap.start === todayISO()) await deleteRecord("notes", ap.key);
+          else await addRecord("notes", { key: ap.key, start: ap.start, end: todayISO() });
+          showToast("Bra, uppehållet är avslutat ✓");
+          await renderMedicin();
+          break;
+        }
+        // Ångra ett uppehåll som startade idag.
+        case "pause-undo":
+          await deleteRecord("notes", PPAUS_PREFIX + todayISO());
+          await renderMedicin();
+          break;
+        case "pause-del":
+          if (confirm("Ta bort det här uppehållet?")) {
+            await deleteRecord("notes", actEl.dataset.key);
+            await renderMedicin();
+          }
           break;
         case "toggle":
           expandedCourse =
@@ -2493,6 +2678,7 @@
     const BLEED_TYPES = [
       { id: "mellanblodning", label: "Mellanblödning", tag: "mellan" },
       { id: "framslappt",     label: "Framsläppt mens", tag: "mens" },
+      { id: "bortfall",       label: "Bortfallsblödning", tag: "bortfall" },
     ];
     const BLEED_FLOWS = [
       { id: "spotting", label: "Spotting" },
@@ -2516,6 +2702,8 @@
     let bleedEditId = null;   // null = ny post, annars id:t vi redigerar
     let expandedEvent = null; // start-datum för utfälld händelse (null = ingen)
     let bleedSel = { date: todayISO(), type: null, flow: null, mood: null };
+    let bleedTypeTouched = false; // hon har själv valt typ (då ändrar vi den inte)
+    let bleedTypeAuto = false;    // typen är förvald av uppehållsförslaget
 
     // Bygg en knapprad (.dose-group-stil) av alternativ; markera valt.
     function bleedOptionsHTML(items, selectedId) {
@@ -2550,7 +2738,9 @@
     }
 
     // Öppna formuläret. Med rec = redigera befintlig post, annars ny (tomt).
-    function openBleedForm(rec) {
+    async function openBleedForm(rec) {
+      bleedTypeTouched = !!rec;
+      bleedTypeAuto = false;
       if (rec) {
         bleedEditId = rec.id;
         bleedSel = {
@@ -2564,6 +2754,36 @@
       renderBleedForm();
       bleedFormEl.classList.add("open");
       bleedFormEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      await applyBleedSuggest();
+    }
+
+    // Föreslå bortfallsblödning när datumet ligger i (eller inom 7 dagar efter) ett
+    // uppehåll i p-pillren. Gäller bara nya poster där hon inte själv valt typ.
+    async function applyBleedSuggest() {
+      const hint = document.getElementById("bleed-suggest");
+      if (bleedEditId != null || bleedTypeTouched) {
+        // Redan vald typ: visa hinten bara om det är förslaget som ligger kvar.
+        hint.hidden = !(bleedTypeAuto && bleedSel.type === "bortfall");
+        return;
+      }
+      const date = document.getElementById("bleed-date").value || bleedSel.date;
+      const pauses = await getPauses();
+      // Hon kan ha valt typ medan vi väntade på uppehållen.
+      if (bleedTypeTouched) return;
+      const suggest = !!pauseDay(pauses, date) || pauseRecentlyEnded(pauses, date, 7);
+      if (suggest) {
+        bleedSel.type = "bortfall";
+        bleedTypeAuto = true;
+        hint.textContent = "Du har (nyss haft) uppehåll i p-pillren, så " +
+          "bortfallsblödning är förvald. Ändra om det inte stämmer.";
+      } else if (bleedTypeAuto) {
+        // Datumet flyttades bort från uppehållet: ta bort det automatiska valet.
+        bleedSel.type = null;
+        bleedTypeAuto = false;
+      }
+      hint.hidden = !suggest;
+      document.getElementById("bleed-type").innerHTML =
+        bleedOptionsHTML(BLEED_TYPES, bleedSel.type);
     }
 
     function closeBleedForm() {
@@ -2637,8 +2857,11 @@
     }
 
     /* --- Statistik (lugn, ingen tvärsäker prognos) --- */
-    function buildBleedStats(entries, events) {
+    function buildBleedStats(entries) {
       if (entries.length === 0) return "";
+      // Bortfallsblödningar hålls isär: snitten räknas på övriga blödningar.
+      const events = groupEvents(entries.filter((e) => e.type !== "bortfall"));
+      const bortfall = groupEvents(entries.filter((e) => e.type === "bortfall"));
 
       // Senast loggade blödningsdag → "X dagar sedan" / "idag".
       const lastDate = entries.reduce(
@@ -2660,6 +2883,9 @@
       const avgLen = events.length
         ? Math.round(events.reduce((a, b) => a + b.len, 0) / events.length) : null;
 
+      const avgBortfall = bortfall.length
+        ? Math.round(bortfall.reduce((a, b) => a + b.len, 0) / bortfall.length) : null;
+
       let html = '<div class="card">';
       html += '<div class="status-eyebrow" style="color:var(--muted)">Översikt</div>';
       html += '<div class="stat-row"><span>Senaste blödning</span>' +
@@ -2670,6 +2896,12 @@
       if (avgGap != null)
         html += '<div class="stat-row"><span>Brukar gå mellan blödningar</span>' +
                 '<span class="stat-val">' + dagar(avgGap) + "</span></div>";
+
+      if (avgBortfall != null)
+        html += '<div class="stat-row"><span>Bortfallsblödningar<br>' +
+                '<span class="hint">brukar vara ' + dagar(avgBortfall) + "</span></span>" +
+                '<span class="stat-val">' + bortfall.length +
+                (bortfall.length === 1 ? " gång" : " gånger") + "</span></div>";
 
       // Varm, försiktig ledtext (ingen prognos) när det finns ett mönster.
       if (avgGap != null) {
@@ -2739,7 +2971,7 @@
       const entries = await getAll("bleeding");
       const events = groupEvents(entries);
       bleedingContent.innerHTML =
-        buildBleedStats(entries, events) + buildBleedHistory(events);
+        buildBleedStats(entries) + buildBleedHistory(events);
     }
 
     /* --- Klickhantering i FORMULÄRET (typ/flöde/mående togglas) --- */
@@ -2748,7 +2980,12 @@
       if (opt) {
         // Vilken grupp? (typ eller flöde) → uppdatera state + markering.
         const group = opt.closest(".dose-group");
-        if (group.id === "bleed-type") bleedSel.type = opt.dataset.opt;
+        if (group.id === "bleed-type") {
+          bleedSel.type = opt.dataset.opt;
+          bleedTypeTouched = true;   // hon har valt själv
+          bleedTypeAuto = false;
+          document.getElementById("bleed-suggest").hidden = true;
+        }
         if (group.id === "bleed-flow") bleedSel.flow = opt.dataset.opt;
         group.querySelectorAll(".dose-opt")
           .forEach((b) => b.classList.toggle("selected", b === opt));
@@ -2764,6 +3001,11 @@
       }
     });
 
+    // Ändrar hon datum kan förslaget om bortfallsblödning behöva uppdateras.
+    document.getElementById("bleed-date").addEventListener("change", async (e) => {
+      bleedSel.date = e.target.value || bleedSel.date;
+      await applyBleedSuggest();
+    });
     document.getElementById("btn-bleed-today")
       .addEventListener("click", () => openBleedForm());
     document.getElementById("btn-bleed-cancel")
@@ -2942,6 +3184,15 @@
       return html + "</div>";
     }
 
+    // Diskret rad när ett uppehåll i p-pillren pågår (klickbar → Medicin).
+    function buildIdagPause(pauses, today) {
+      const ap = activePause(pauses);
+      if (!ap) return "";
+      return '<button type="button" class="card-link" data-act="pause">' +
+        "<span>⏸ Uppehåll i p-pillren – dag " + (daysBetween(ap.start, today) + 1) +
+        '</span><span class="card-link-arrow">›</span></button>';
+    }
+
     // Bygg blödningsraden (klickbar → öppnar Blödningar-vyn).
     function buildIdagBleed(bleed, today) {
       const rec = bleed.find((b) => b.date === today);
@@ -3118,7 +3369,7 @@
     let welcomeDecision = { date: "", value: false };
     async function renderIdag() {
       const today = todayISO();
-      const [moodRec, courses, meds, bleed, mood1, mood2, helps, avoid, signal, allMood] = await Promise.all([
+      const [moodRec, courses, meds, bleed, mood1, mood2, helps, avoid, signal, allMood, pauses] = await Promise.all([
         getRecord("mood", today), getAll("courses"),
         getAll("medication"), getAll("bleeding"),
         getRecord("mood", shiftDate(today, -1)),
@@ -3127,6 +3378,7 @@
         getRecord("notes", "avoid"),
         getRecord("notes", "signal"),
         getAll("mood"),
+        getPauses(),
       ]);
       const recentMood = [moodRec, mood1, mood2];
 
@@ -3167,6 +3419,7 @@
       if (afterQuick) html += support;
       html += buildIdagMed(courses, meds, today);
       // Diskreta rader längst ner: blödning, undvik, stöd.
+      html += buildIdagPause(pauses, today);
       html += buildIdagBleed(bleed, today);
       html += buildAvoid((avoid && avoid.text) || "");
       if (!supportCard) html += support;   // bara den diskreta länken
@@ -3200,6 +3453,9 @@
           break;
         case "blod":
           showView("blodningar", "Blödningar");
+          break;
+        case "pause":
+          showView("medicin", "Medicin");
           break;
         case "support-open":
           supportOpen = true;
@@ -3273,6 +3529,43 @@
     let monsterMonth = todayISO().slice(0, 7);  // månad som kalendern visar
     let monsterMetric = "helhet"; // vad kalenderns färg visar
     let monsterSelected = null;  // vald dag (YYYY-MM-DD) eller null
+    let monsterMoreOpen = false; // är "Mer statistik" uppfälld? (överlever omritning)
+    const monsterInfoOpen = new Set(); // vilka ⓘ-förklaringar som är öppna
+
+    // Förklaringstexter bakom ⓘ-knapparna.
+    const INFO_TEXTS = {
+      kalender: "Varje ruta är en dag. Mörkare ruta = tyngre dag (snittet av dagens " +
+        "skattningar, där 5 är tyngst). Prickar och ringar visar medicin, blödning, " +
+        "ny p-pillerkarta och uppehåll i p-pillren. Tom ruta = inte loggat.",
+      insikt: "Här jämförs andelen tunga dagar i olika grupper av dagar. En tung dag = snittet " +
+        "av dagens skattningar är minst 3,5 av 5. Något visas bara när skillnaden är minst " +
+        "20 procentenheter och varje grupp har minst 5 dagar. Uppskattade dagar räknas inte " +
+        "med. Det visar samband i din loggning, inte vad som orsakar vad.",
+      manad: "Antal loggade, tunga och lätta dagar den här månaden. En tung dag = snittet " +
+        "av dagens skattningar är minst 3,5 av 5, en lätt dag högst 2,25.",
+      medicin: "Andelen tunga dagar tre dagar före en omgång, under en omgång och övriga " +
+        "dagar. En tung dag = snittet av dagens skattningar är minst 3,5 av 5. Grupper " +
+        "med färre än 5 dagar visas inte.",
+      manader: "Hur många av månadens loggade dagar som var lätta, mellan och tunga.",
+      snabbval: "Hur många dagar du valt varje snabbval.",
+      jamfor: "Snittvärden på skalan 1–5 för två grupper av dagar. Jämförelser visas först när " +
+        "varje grupp har minst 5 dagar. Blödningsdagar här är blödningar utan " +
+        "bortfallsblödning.",
+    };
+    // ⓘ-knapp (på rubrikraden) + förklaring som visas/döljs.
+    function infoBtn(id) {
+      return '<button type="button" class="info-btn" data-info="' + id +
+        '" aria-label="Förklaring" aria-expanded="' + monsterInfoOpen.has(id) + '">ⓘ</button>';
+    }
+    function infoText(id) {
+      return '<p class="hint info-text" data-info-text="' + id + '"' +
+        (monsterInfoOpen.has(id) ? "" : " hidden") + ">" + INFO_TEXTS[id] + "</p>";
+    }
+    // Rubrikrad för ett kort: titel + ⓘ, med förklaringen under.
+    function cardHead(title, id) {
+      return '<div class="card-head"><div class="status-eyebrow" style="color:var(--muted)">' +
+        title + "</div>" + infoBtn(id) + "</div>" + infoText(id);
+    }
 
     // Kortnamn till rapportens kolumner.
     const METRIC_SHORT = {
@@ -3301,8 +3594,12 @@
 
     // Samla allt per datum för de senaste n dagarna (äldst först), eller för
     // en given lista med datum.
-    function collectDays(n, mood, bleeding, meds, courses, packDates, dates) {
-      const packs = new Set(packDates || []);
+    // data = { mood, bleeding, meds, courses, packDates, pauses }
+    function collectDays(n, data, dates) {
+      const { mood, bleeding, meds, courses } = data;
+      const pauses = data.pauses || [];
+      const packs = new Set(data.packDates || []);
+      const pauseEnds = new Set(pauses.filter((p) => p.end).map((p) => p.end));
       const today = todayISO();
       const moodBy = new Map(mood.map((m) => [m.date, m]));
       const bleedBy = new Map(bleeding.map((b) => [b.date, b]));
@@ -3319,6 +3616,9 @@
           bleed: bleedBy.get(date) || null,
           med: medBy.get(date) || null,
           pill: packs.has(date),
+          // Dag nummer i ett uppehåll (eller null), och om dagen är den hon började igen.
+          pause: (pauseDay(pauses, date) || {}).n || null,
+          pauseEnd: pauseEnds.has(date),
           inCourse: courses.some((c) =>
             date >= c.startdatum && date <= (c.slutdatum || today)),
         });
@@ -3379,7 +3679,7 @@
     function monthDays(ym, data) {
       const first = new Date(ym + "-01T00:00:00");
       const n = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
-      const all = collectDays(0, data.mood, data.bleeding, data.meds, data.courses, data.packDates,
+      const all = collectDays(0, data,
         Array.from({ length: n }, (_, i) => ym + "-" + String(i + 1).padStart(2, "0")));
       return { days: all, offset: (first.getDay() + 6) % 7 };
     }
@@ -3389,6 +3689,8 @@
     function buildCalendar(ym, days, offset, partner) {
       const today = todayISO();
       let html = '<div class="card">';
+      if (!partner) html += '<div class="card-head"><span></span>' + infoBtn("kalender") + "</div>" +
+        infoText("kalender");
       html += '<div class="cal-nav">' +
         '<button type="button" data-month="-1" aria-label="Föregående månad">‹</button>' +
         '<span class="cal-title">' + monthTitle(ym) + "</span>" +
@@ -3410,14 +3712,16 @@
         const marks =
           (d.med ? '<i class="m-med"></i>' : d.inCourse ? '<i class="m-med soft"></i>' : "") +
           (d.bleed ? '<i class="m-bleed"></i>' : "") +
-          (d.pill ? '<i class="m-pill"></i>' : "");
+          (d.pill ? '<i class="m-pill"></i>' : "") +
+          (d.pause ? '<i class="m-pause"></i>' : "");
         const cls = "cal-day" + (lv ? " has" : "") + (lv >= 4 ? " dark" : "") +
           (d.date === today ? " today" : "") + (d.date > today ? " future" : "") +
           (d.date === monsterSelected ? " sel" : "");
         const what = [lv ? "tyngd " + lv + " av 5" : "inte loggat"];
         if (d.med) what.push("medicin tagen");
-        if (d.bleed) what.push("blödning");
+        if (d.bleed) what.push(d.bleed.type === "bortfall" ? "bortfallsblödning" : "blödning");
         if (d.pill) what.push("ny p-pillerkarta");
+        if (d.pause) what.push("uppehåll i p-piller (dag " + d.pause + ")");
         const tag = partner ? "div" : "button";
         html += "<" + tag + (partner ? ' role="img"' : ' type="button"') +
           ' class="' + cls + (partner ? " static" : "") + '" data-date="' + d.date + '"' +
@@ -3434,7 +3738,8 @@
         " Tyngre</span>" +
         '<span><i class="m m-med"></i>Medicin</span>' +
         (partner ? "" : '<span><i class="m m-bleed"></i>Blödning</span>' +
-          '<span><i class="m m-pill"></i>Ny p-pillerkarta</span>') + "</div>";
+          '<span><i class="m m-pill"></i>Ny p-pillerkarta</span>' +
+          '<span><i class="m m-pause"></i>Uppehåll p-piller</span>') + "</div>";
       html += '<p class="hint" style="margin-top:8px">Tom ruta = inte loggat.' +
               (partner ? "" : " Tryck på en dag för att se den.") + "</p>";
       return html + "</div>";
@@ -3456,8 +3761,8 @@
       const past = days.filter((d) => d.date <= today);
       const classes = past.map((d) => dayClass(d.mood));
       const tile = (n, label) => '<div class="tile"><b>' + n + "</b><span>" + label + "</span></div>";
-      return '<div class="card"><div class="status-eyebrow" style="color:var(--muted)">' +
-        monthTitle(ym) + " i korthet</div>" + '<div class="tiles">' +
+      return '<div class="card">' + cardHead(monthTitle(ym) + " i korthet", "manad") +
+        '<div class="tiles">' +
         tile(past.filter((d) => d.mood).length + " av " + past.length, "dagar loggade") +
         tile(classes.filter((c) => c === "tung").length, "tunga dagar") +
         tile(classes.filter((c) => c === "latt").length, "lätta dagar") +
@@ -3492,8 +3797,7 @@
       });
       const shown = groups.filter((g) => g.days.length >= MIN_GROUP);
       if (shown.length < 2) return "";
-      return '<div class="card"><div class="status-eyebrow" style="color:var(--muted)">' +
-        "Runt medicinomgångarna</div>" +
+      return '<div class="card">' + cardHead("Runt medicinomgångarna", "medicin") +
         '<p class="hint" style="margin-top:6px">Hur stor del av dagarna som var tunga.</p>' +
         shown.map((g) => {
           const heavy = g.days.filter((c) => c === "tung").length;
@@ -3514,8 +3818,7 @@
       const months = [...by.keys()].sort().slice(-12);
       if (months.length < 2) return "";
       const seg = [["latt", 1], ["mellan", 3], ["tung", 5]];
-      return '<div class="card"><div class="status-eyebrow" style="color:var(--muted)">' +
-        "Månad för månad</div>" +
+      return '<div class="card">' + cardHead("Månad för månad", "manader") +
         months.map((ym) => {
           const c = by.get(ym);
           const total = c.latt + c.mellan + c.tung;
@@ -3538,8 +3841,7 @@
         n: mood.filter((m) => (m.tags || []).includes(t.id)).length,
       })).filter((t) => t.n).sort((a, b) => b.n - a.n);
       if (!counts.length) return "";
-      return '<div class="card"><div class="status-eyebrow" style="color:var(--muted)">' +
-        "Vanligaste snabbvalen</div>" +
+      return '<div class="card">' + cardHead("Vanligaste snabbvalen", "snabbval") +
         counts.map((t) => barRowHTML(t.label, dagar(t.n), t.n / counts[0].n)).join("") +
         "</div>";
     }
@@ -3567,7 +3869,12 @@
       if (tags.length) rows.push(["Snabbval", tags.join(", ")]);
       if (day.med) rows.push(["Medicin", (day.med.dos ? day.med.dos + " mg" : "tagen")]);
       else if (day.inCourse) rows.push(["Medicin", "omgång pågår, ej bockad"]);
-      if (day.pill) rows.push(["P-piller", "ny karta startad"]);
+      // P-piller: uppehåll (dag N), började igen och/eller ny karta.
+      const pillTxt = [];
+      if (day.pause) pillTxt.push("uppehåll, dag " + day.pause);
+      if (day.pauseEnd) pillTxt.push("började igen");
+      if (day.pill) pillTxt.push("ny karta startad");
+      if (pillTxt.length) rows.push(["P-piller", pillTxt.join(", ")]);
 
       if (!rows.length) {
         html += '<p class="hint" style="margin-top:6px">Inget loggat den här dagen.</p>';
@@ -3587,10 +3894,10 @@
     }
 
     /* --- Enkla jämförelser ("mönster hittills") ---
-       Räknas på ALL loggad data. Visas först vid ~30 loggade dagar, och varje
+       Räknas på ALL loggad data. Visas först vid 14 loggade dagar, och varje
        jämförelse kräver minst 5 dagar i varje grupp. Formuleras försiktigt:
        det här visar samband i loggningen, inte orsak. */
-    const MIN_DAYS_FOR_PATTERNS = 30;
+    const MIN_LOGGED_DAYS = 14;
     const MIN_GROUP = 5;
 
     function compareLine(label, a, b) {
@@ -3603,9 +3910,7 @@
     }
 
     function buildComparisons(mood, bleeding) {
-      let html = '<div class="card"><div class="status-eyebrow" ' +
-                 'style="color:var(--muted)">Fler jämförelser</div>';
-      if (mood.length < MIN_DAYS_FOR_PATTERNS) return "";
+      let html = '<div class="card">' + cardHead("Fler jämförelser", "jamfor");
       const sc = (m, id) => (m.scores && m.scores[id] != null ? m.scores[id] : null);
       const pick = (list, id) => list.map((m) => sc(m, id)).filter((v) => v != null);
 
@@ -3619,8 +3924,9 @@
       lines += compareLine("Magbesvär vid hög respektive låg stress",
         { name: "stress 4–5", values: pick(mood.filter((m) => sc(m, "stress") >= 4), "magbesvar") },
         { name: "stress 1–2", values: pick(mood.filter((m) => sc(m, "stress") != null && sc(m, "stress") <= 2), "magbesvar") });
-      // 3) Humör på blödningsdagar jämfört med övriga dagar.
-      const bleedDates = new Set(bleeding.map((b) => b.date));
+      // 3) Humör på blödningsdagar jämfört med övriga dagar
+      //    (bortfallsblödning räknas inte som blödningsdag här).
+      const bleedDates = new Set(bleeding.filter((b) => b.type !== "bortfall").map((b) => b.date));
       lines += compareLine("Humör på blödningsdagar respektive övriga dagar",
         { name: "blödning", values: pick(mood.filter((m) => bleedDates.has(m.date)), "humor") },
         { name: "övriga", values: pick(mood.filter((m) => !bleedDates.has(m.date)), "humor") });
@@ -3633,7 +3939,7 @@
     }
 
     // Fyll läkarrapporten (en rad per dag) och öppna utskriftsdialogen.
-    function printReport(days) {
+    function printReport(days, pauses) {
       const head = "<tr><th>Datum</th>" +
         MOOD_METRICS.map((m) => "<th>" + METRIC_SHORT[m.id] + "</th>").join("") +
         "<th>Sömn (tim)</th><th>Blödning</th><th>Medicin (mg)</th><th>Övrigt</th></tr>";
@@ -3641,18 +3947,30 @@
         const scores = (d.mood && d.mood.scores) || {};
         const extra = tagLabels(d.mood);
         if (d.pill) extra.push("Ny p-pillerkarta");
+        if (d.pause) extra.push("Uppehåll p-piller dag " + d.pause);
+        if (d.pauseEnd) extra.push("P-piller igen");
         return "<tr><td>" + d.date + (d.mood && d.mood.estimated ? "*" : "") + "</td>" +
           MOOD_METRICS.map((m) => "<td>" + (scores[m.id] != null ? scores[m.id] : "") + "</td>").join("") +
           "<td>" + (d.mood && d.mood.sleepHours != null ? fmtHours(d.mood.sleepHours) : "") + "</td>" +
-          "<td>" + (d.bleed ? escapeHTML(bleedFlowLabel(d.bleed.flow)) : "") + "</td>" +
+          "<td>" + (d.bleed ? escapeHTML(d.bleed.type === "bortfall"
+            ? "Bortfall, " + bleedFlowLabel(d.bleed.flow).toLowerCase()
+            : bleedFlowLabel(d.bleed.flow)) : "") + "</td>" +
           "<td>" + (d.med ? (d.med.dos || "x") : "") + "</td>" +
           "<td>" + escapeHTML(extra.join(", ")) + "</td></tr>";
       }).join("");
       const logged = days.filter((d) => d.mood).length;
+      // Uppehåll som överlappar rapportperioden (tomt = raden utelämnas).
+      const first = days[0].date, lastDay = days[days.length - 1].date;
+      const pauseList = (pauses || []).filter((p) =>
+        p.start <= lastDay && (!p.end || shiftDate(p.end, -1) >= first));
+      const pauseLine = pauseList.length
+        ? "<p>Uppehåll i p-pillren: " + pauseList.map((p) =>
+            fmtShort(p.start) + " – " + (p.end ? fmtShort(shiftDate(p.end, -1)) : "pågår")
+          ).join(", ") + ".</p>" : "";
 
       document.getElementById("print-report").innerHTML =
         "<h1>Symtomdagbok " + fmtLong(days[0].date) + " – " +
-        fmtLong(days[days.length - 1].date) + "</h1>" +
+        fmtLong(days[days.length - 1].date) + "</h1>" + pauseLine +
         "<p>Daglig egen skattning, skala 1–5. Humör, Energi och Sömnkvalitet: " +
         "5 = bra. Övriga: 5 = mycket. Tom ruta = inte loggat. Loggat " + logged +
         " av " + days.length + " dagar." +
@@ -3664,31 +3982,123 @@
 
     let _monsterData = null;  // senast hämtade data (för rapporten)
 
+    // Antal loggade dagar (mood-poster med minst en skattning).
+    function loggedDayCount(mood) {
+      return mood.filter((m) => !m.estimated && dayLevel(m, "helhet") != null).length;
+    }
+
+    /* --- Insiktskortet "Det här syns just nu" ---
+       Räknas lokalt på andelen tunga dagar. En jämförelse räknas bara om båda
+       grupperna har minst MIN_GROUP dagar och skillnaden är minst 20
+       procentenheter. Uppskattade dagar (estimated) räknas aldrig. Försiktiga
+       formuleringar: "har oftare varit", aldrig orsak eller råd. */
+    function buildInsight(data) {
+      const today = todayISO();
+      const { courses, bleeding } = data;
+      const pauses = data.pauses || [];
+      // Loggade, ej uppskattade dagar med sin klass (tung/mellan/latt).
+      const logged = data.mood.filter((m) => !m.estimated)
+        .map((m) => ({ date: m.date, c: dayClass(m) })).filter((d) => d.c);
+      const inCourse = (date) => courses.some((c) =>
+        date >= c.startdatum && date <= (c.slutdatum || today));
+      // Andel tunga dagar i en grupp, eller null om gruppen är för liten.
+      const share = (list) => list.length < MIN_GROUP ? null
+        : list.filter((d) => d.c === "tung").length / list.length;
+      const pctN = (x) => Math.round(x * 100);
+      const cands = [];
+      // Lägg till en kandidat om skillnaden (a minus b) är minst 20 procentenheter.
+      const add = (a, b, text) => {
+        const sa = share(a), sb = share(b);
+        if (sa == null || sb == null) return;
+        const diff = sa - sb;
+        if (diff >= 0.2) cands.push({ diff, text: text(pctN(sa), pctN(sb)) });
+      };
+
+      // 1) Första veckan av ett uppehåll (dag 1–7 från start) mot övriga dagar utan omgång.
+      const weekAfter = new Set();
+      pauses.forEach((p) => { for (let i = 0; i < 7; i++) weekAfter.add(shiftDate(p.start, i)); });
+      if (weekAfter.size) add(
+        logged.filter((d) => weekAfter.has(d.date) && !inCourse(d.date)),
+        logged.filter((d) => !weekAfter.has(d.date) && !inCourse(d.date)),
+        (x, y) => "Första veckan av ett uppehåll i p-pillren har oftare varit tung (" + x +
+          " % av dagarna, mot " + y + " % annars).");
+
+      // 2) Tre dagar före en omgångsstart mot övriga dagar utan omgång.
+      const before = new Set();
+      courses.forEach((c) => {
+        for (let i = 1; i <= 3; i++) before.add(shiftDate(c.startdatum, -i));
+      });
+      const beforeDays = logged.filter((d) => before.has(d.date) && !inCourse(d.date));
+      add(beforeDays,
+        logged.filter((d) => !before.has(d.date) && !inCourse(d.date)),
+        (x, y) => "Dagarna innan du började en omgång var oftare tunga (" + x +
+          " % av dagarna, mot " + y + " % annars).");
+
+      // 3) Under omgång mot dagarna före (färre tunga under omgång).
+      add(beforeDays, logged.filter((d) => inCourse(d.date)),
+        (x, y) => "Under omgångarna har det varit färre tunga dagar än innan (" + y +
+          " % mot " + x + " %).");
+
+      // 4) Dagar med mellanblödning (inte bortfall) mot dagar utan blödning.
+      const midDates = new Set(bleeding.filter((b) => b.type === "mellanblodning").map((b) => b.date));
+      const anyBleed = new Set(bleeding.map((b) => b.date));
+      add(logged.filter((d) => midDates.has(d.date)),
+        logged.filter((d) => !anyBleed.has(d.date)),
+        (x, y) => "Dagar med mellanblödning har oftare varit tunga (" + x +
+          " % av dagarna, mot " + y + " % annars).");
+
+      // 5) Senaste 7 dagarna mot alla loggade dagar (kräver minst 5 loggade).
+      const last7 = new Set();
+      for (let i = 0; i < 7; i++) last7.add(shiftDate(today, -i));
+      const recent = logged.filter((d) => last7.has(d.date));
+      if (recent.length >= 5 && logged.length >= MIN_GROUP) {
+        const sr = share(recent), sa = share(logged);
+        if (sr != null && sa != null && Math.abs(sr - sa) >= 0.2)
+          cands.push({ diff: Math.abs(sr - sa),
+            text: "Den senaste veckan har varit " + (sr > sa ? "tyngre" : "lättare") +
+              " än vanligt för dig." });
+      }
+
+      cands.sort((a, b) => b.diff - a.diff);
+      const top = cands.slice(0, 3);
+      let body;
+      if (data.mood.length && loggedDayCount(data.mood) < MIN_LOGGED_DAYS || !top.length)
+        body = '<p style="margin:8px 0 0">Inget tydligt mönster än – fortsätt logga 💗</p>';
+      else
+        body = '<ul class="insight-list">' +
+          top.map((c) => "<li>" + c.text + "</li>").join("") + "</ul>";
+      return '<div class="card">' + cardHead("Det här syns just nu", "insikt") + body + "</div>";
+    }
+
     async function renderMonster() {
-      const [mood, bleeding, meds, courses, packDates] = await Promise.all([
+      const [mood, bleeding, meds, courses, packDates, pauses] = await Promise.all([
         getAll("mood"), getAll("bleeding"), getAll("medication"), getAll("courses"),
-        getPillPackDates(),
+        getPillPackDates(), getPauses(),
       ]);
-      _monsterData = { mood, bleeding, meds, courses, packDates };
+      _monsterData = { mood, bleeding, meds, courses, packDates, pauses };
       const { days, offset } = monthDays(monsterMonth, _monsterData);
       const selected = days.find((d) => d.date === monsterSelected) || null;
 
-      const stats = buildMedEffect(mood, courses) + buildMonthsOverview(mood) +
-        buildTagStats(mood) + buildComparisons(mood, bleeding);
+      const enough = loggedDayCount(mood) >= MIN_LOGGED_DAYS;
+      // Jämförande block kräver MIN_LOGGED_DAYS loggade dagar; månadsrutor och snabbval alltid.
+      const compare = enough
+        ? buildMedEffect(mood, courses) + buildMonthsOverview(mood) + buildComparisons(mood, bleeding)
+        : '<div class="card"><p class="hint" style="margin:0">Visas när du loggat ' +
+          MIN_LOGGED_DAYS + " dagar (" + (MIN_LOGGED_DAYS - loggedDayCount(mood)) + " kvar).</p></div>";
       const estimated = mood.filter((m) => m.estimated).length;
+      const more = buildMonthTiles(monsterMonth, days) + compare + buildTagStats(mood) +
+        '<p class="hint" style="margin:12px 4px 0">En tung dag = snittet av ' +
+        "dagens skattningar är minst 3,5 av 5. Det här visar samband i loggningen, " +
+        "inte vad som orsakar vad." +
+        (estimated ? " " + estimated + " av " + dagar(mood.length) +
+          " är uppskattade i efterhand från anteckningar." : "") + "</p>";
 
       monsterContent.innerHTML =
         buildCalendar(monsterMonth, days, offset) +
         buildDayDetail(selected) +
-        buildMonthTiles(monsterMonth, days) +
-        (stats
-          ? stats + '<p class="hint" style="margin:12px 4px 0">En tung dag = snittet av ' +
-            "dagens skattningar är minst 3,5 av 5. Det här visar samband i loggningen, " +
-            "inte vad som orsakar vad." +
-            (estimated ? " " + estimated + " av " + dagar(mood.length) +
-              " är uppskattade i efterhand från anteckningar." : "") + "</p>"
-          : '<div class="card"><p class="hint" style="margin:0">När det finns fler ' +
-            "loggade dagar visas statistik här.</p></div>") +
+        buildInsight(_monsterData) +
+        '<details class="more-stats"' + (monsterMoreOpen ? " open" : "") +
+        "><summary>Mer statistik</summary>" + more + "</details>" +
         '<div class="card"><strong>Till läkarbesöket</strong>' +
         '<p class="hint" style="margin-top:6px">En tabell med varje dag i den ' +
         "valda perioden, att skriva ut eller spara som PDF.</p>" +
@@ -3699,7 +4109,24 @@
         monsterDays + " dagar</button></div>";
     }
 
+    // <details>-toggle bubblar inte: lyssna med capture och kom ihåg öppet-läget.
+    monsterContent.addEventListener("toggle", (e) => {
+      if (e.target.classList && e.target.classList.contains("more-stats"))
+        monsterMoreOpen = e.target.open;
+    }, true);
+
     monsterContent.addEventListener("click", async (e) => {
+      // ⓘ: visa/dölj förklaringen (utan omritning) och kom ihåg valet.
+      const info = e.target.closest("[data-info]");
+      if (info) {
+        const id = info.dataset.info;
+        const open = !monsterInfoOpen.has(id);
+        if (open) monsterInfoOpen.add(id); else monsterInfoOpen.delete(id);
+        info.setAttribute("aria-expanded", String(open));
+        const txt = monsterContent.querySelector('[data-info-text="' + id + '"]');
+        if (txt) txt.hidden = !open;
+        return;
+      }
       const nav = e.target.closest("[data-month]");
       if (nav) {
         monsterMonth = shiftMonth(monsterMonth, Number(nav.dataset.month));
@@ -3733,7 +4160,7 @@
       if (!actEl) return;
       if (actEl.dataset.act === "print" && _monsterData) {
         const d = _monsterData;
-        printReport(collectDays(monsterDays, d.mood, d.bleeding, d.meds, d.courses, d.packDates));
+        printReport(collectDays(monsterDays, d), d.pauses);
       }
       if (actEl.dataset.act === "open-day" && monsterSelected) {
         await loadMoodForDate(monsterSelected);
@@ -4505,7 +4932,7 @@
     // Fyll demo-databasen med ~60 dagar påhittad data (bara om den är tom).
     async function seedDemo() {
       // Redan seedad? (Anteckningen skrivs sist, så en avbruten seed görs om.)
-      if (await getRecord("notes", "demo-seeded")) return;
+      if (await getRecord("notes", "demo-seeded-2")) return;
       // Töm först: en avbruten seed har lämnat medicin/blödningar med nya id:n
       // som annars skulle bli dubbletter. Bara demodatabasen (DB_NAME) rörs.
       if (!DEMO_MODE) return;
@@ -4525,7 +4952,8 @@
         (date >= c1.startdatum && date <= c1.slutdatum) || date >= c2.startdatum;
 
       // Dagar närmast före en omgång är tyngre (värken i cykeln).
-      const heavyDay = (i) => (i >= 46 && i <= 52) || i <= 5 || (i >= 18 && i <= 20);
+      const heavyDay = (i) => (i >= 46 && i <= 52) || i <= 5 || (i >= 18 && i <= 20) ||
+        (i >= 25 && i <= 30);
 
       for (let i = 59; i >= 0; i--) {
         const date = shiftDate(today, -i);
@@ -4559,16 +4987,28 @@
       }
 
       // Några blödningar (två perioder). type/flow-id:n hämtas ur appens egna listor.
-      const bleedDays = [-28, -27, -26, -25, -24, -1, 0];
+      // Bortfallsblödning under förra uppehållet (-28..-25) och det pågående (-1, 0),
+      // samt två mellanblödningsdagar (-12, -11).
+      const bleedDays = [-28, -27, -26, -25, -12, -11, -1, 0];
       for (const off of bleedDays) {
         await addRecord("bleeding", {
           date: shiftDate(today, off),
-          type: "framslappt",
-          flow: off === -26 || off === -25 ? "rikligt" : "medel",
+          type: off === -12 || off === -11 ? "mellanblodning" : "bortfall",
+          flow: off === -12 || off === -11 ? "spotting"
+            : off === -26 || off === -25 ? "rikligt" : "medel",
         });
       }
+      // Uppehåll i p-pillren: ett avslutat (-30..-25) och ett pågående (från -2).
+      await addRecord("notes", { key: PPAUS_PREFIX + shiftDate(today, -30),
+        start: shiftDate(today, -30), end: shiftDate(today, -25) });
+      await addRecord("notes", { key: PPAUS_PREFIX + shiftDate(today, -2),
+        start: shiftDate(today, -2), end: null });
+      // Kartstarter dag -55 och -25.
+      for (const off of [-55, -25])
+        await addRecord("notes", { key: PPILLER_PREFIX + shiftDate(today, off),
+          date: shiftDate(today, off) });
       // Markera sist att demodatan är klar.
-      await addRecord("notes", { key: "demo-seeded" });
+      await addRecord("notes", { key: "demo-seeded-2" });
     }
     if (DEMO_MODE) {
       seedDemo()

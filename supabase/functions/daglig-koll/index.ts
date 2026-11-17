@@ -181,10 +181,13 @@ async function listOwners(db: SupabaseClient): Promise<string[]> {
 
 const ROW_COLS = "store,key,data,deleted_at";
 
-/** Allt en ägares logik behöver: omgångar, dagens dos, och mående senaste dagarna. */
+/**
+ * Allt en ägares logik behöver: omgångar, dagens dos, mående senaste dagarna,
+ * blödningar i fönstret samt p-pillerkartor (ppiller:) och uppehåll (ppaus:).
+ */
 async function loadRows(db: SupabaseClient, userId: string, today: string): Promise<RecordRow[]> {
   const from = shiftDay(today, -(AI_DAYS - 1));
-  const [courses, times, meds, moods] = await Promise.all([
+  const [courses, times, meds, moods, bleeds, packs, pauses] = await Promise.all([
     db.from("records").select(ROW_COLS).eq("user_id", userId).eq("store", "courses"),
     // Hennes valda notistider (en rad).
     db.from("records").select(ROW_COLS).eq("user_id", userId).eq("store", "notes")
@@ -193,13 +196,24 @@ async function loadRows(db: SupabaseClient, userId: string, today: string): Prom
       .eq("data->>date", today),
     db.from("records").select(ROW_COLS).eq("user_id", userId).eq("store", "mood")
       .gte("key", from).lte("key", today).order("key", { ascending: true }).limit(1000),
+    // Blödningar: servernyckeln är ett uid, så filtrera på datumet i data.
+    db.from("records").select(ROW_COLS).eq("user_id", userId).eq("store", "bleeding")
+      .gte("data->>date", from).lte("data->>date", today).limit(1000),
+    // Kartstarter inom fönstret (datumet ingår i nyckeln) och alla uppehåll (ett kan ha startat före fönstret); filtreras i buildAiInput.
+    db.from("records").select(ROW_COLS).eq("user_id", userId).eq("store", "notes")
+      .gte("key", "ppiller:" + from).lte("key", "ppiller:" + today).limit(1000),
+    db.from("records").select(ROW_COLS).eq("user_id", userId).eq("store", "notes")
+      .like("key", "ppaus:%").limit(1000),
   ]);
-  for (const r of [courses, times, meds, moods]) if (r.error) throw new Error("records: " + r.error.message);
+  for (const r of [courses, times, meds, moods, bleeds, packs, pauses]) if (r.error) throw new Error("records: " + r.error.message);
   return [
     ...(courses.data ?? []),
     ...(times.data ?? []),
     ...(meds.data ?? []),
     ...(moods.data ?? []),
+    ...(bleeds.data ?? []),
+    ...(packs.data ?? []),
+    ...(pauses.data ?? []),
   ] as RecordRow[];
 }
 
@@ -226,14 +240,24 @@ async function partnerOnly(db: SupabaseClient): Promise<Set<string>> {
 
 const SYSTEM_PROMPT = `Du hjälper en person som tar escitalopram i korta omgångar. Hon startar en omgång när premenstruella symtom börjar (symtomstyrd dosering, överenskommen med hennes läkare). Du får hennes dagliga dagbok och hennes tidigare omgångar, och ska bedöma om det är dags igen.
 
+BAKGRUND: Hon har PMDS och PCOS. PCOS ger oregelbunden mens, så kalendern kan inte förutsäga när en tung period kommer. Räkna alltså inte med en fast cykel. Hon tar p-piller kontinuerligt, men gör ibland uppehåll för att blöda ut (bortfallsblödning). Dagarna efter ett uppehåll i p-pillren KAN vara en ledtråd, men väg bara in dem om hennes egen data visar att tidigare uppehåll följdes av tyngre dagar.
+
 INDATA (JSON):
 - "idag": dagens datum.
 - "dagar": en rad per loggad dag: "datum", "skattningar" (skala 1-5), "taggar", "anteckning" (hennes egna ord), "sovtimmar" och "uppskattad". Dagar utan rad är ologgade.
 - "omgangar": tidigare och ev. pågående omgångar med "start" och "slut".
+- "blodningar": blödningar med "datum", "typ" och "flode". typ är "mellanblodning" (blödning mellan perioder), "framslappt" (framkallad blödning) eller "bortfall" (blödning under eller efter uppehåll i p-pillren). flode är "spotting", "latt", "medel" eller "rikligt".
+- "kartstarter": datum då hon började på en ny p-pillerkarta.
+- "uppehall": uppehåll i p-pillren med "start" (första dagen utan piller), "slut" (dagen hon började igen, null om uppehållet pågår) och "pagar". Dag N i ett uppehåll är antal dagar sedan start plus 1.
+Saknas blödningar, kartstarter eller uppehåll är listorna tomma. Det betyder bara att inget är registrerat.
 
 SKATTNINGAR: för humor, energi och sleepQuality betyder HÖGT bra. För alla andra (irritabilitet, angest, sjalvkritik, kanslighet, intensitet, delusion, magbesvar, stress) betyder HÖGT värre. "uppskattad": true betyder att siffrorna är rekonstruerade i efterhand från hennes anteckningar om perioden. De är grova och ska vägas lägre än dagar loggade i stunden.
 
-UPPGIFT: Bedöm om de SENASTE 1-3 DAGARNA liknar dagarna precis innan hennes tidigare omgångar startade. Väg också in typiskt antal dagar mellan omgångarnas starter mot antalet dagar sedan den senaste omgången tog slut. Jämför med hennes egen data, inte med allmänna antaganden.
+UPPGIFT: Bedöm om de SENASTE 1-3 DAGARNA liknar hur hon mådde vid tidigare tillfällen som ledde till en omgång. Jämför med:
+(a) dagarna precis före hennes tidigare omgångsstarter,
+(b) motsvarande dag i tidigare uppehåll, och dagarna efter ett uppehåll,
+(c) dagar kring blödningar.
+Pågår ett uppehåll nu: jämför med hur hon mådde lika många dagar in i tidigare uppehåll. Väg också in typiskt antal dagar mellan omgångarnas starter mot antalet dagar sedan den senaste omgången tog slut, men kom ihåg att hennes mens är oregelbunden. Jämför med hennes egen data, inte med allmänna antaganden.
 
 Var konservativ: sätt dags=true bara när det finns en verklig likhet i hennes egen data. Vid osäkerhet, för lite data eller otydligt mönster: dags=false. Ge aldrig doseringsråd och ställ aldrig diagnos.
 
@@ -241,8 +265,8 @@ UTDATA (följer schemat):
 - dags: boolean.
 - sakerhet: "låg", "medel" eller "hög".
 - liknar: datum (YYYY-MM-DD) för den tidigare dag som de senaste dagarna mest liknar (t.ex. dagen före en tidigare omgångsstart), eller null.
-- text: till henne, på svenska, du-form, varm ton, högst 2 korta meningar. Säg vad det liknar och när, och avsluta med en vänlig puff i stil med "Kanske dags för din tablett?". Tom sträng om dags är false.
-- text_partner: en mening på svenska till hennes partner, t.ex. "Det ser ut som att en tyngre period kan vara på väg." Får INTE citera hennes anteckningar eller räkna upp detaljerade symtom. Tom sträng om dags är false.`;
+- text: till henne, på svenska, du-form, varm ton, högst 2 korta meningar. Säg vad det liknar och när, och avsluta med en vänlig puff i stil med "Kanske dags för din tablett?". Får inte nämna blödning (den kan visas på hennes låsskärm); uppehåll och p-piller får nämnas. Tom sträng om dags är false.
+- text_partner: en mening på svenska till hennes partner, t.ex. "Det ser ut som att en tyngre period kan vara på väg." Får INTE nämna blödningar, p-piller eller uppehåll, INTE citera hennes anteckningar och INTE räkna upp detaljerade symtom. Tom sträng om dags är false.`;
 
 const OUTPUT_SCHEMA = {
   type: "object",

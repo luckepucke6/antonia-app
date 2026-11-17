@@ -180,6 +180,12 @@ export interface AiInput {
     uppskattad: boolean;
   }>;
   omgangar: Array<{ start: string; slut: string | null; pagar: boolean }>;
+  // Blödningar inom fönstret, sorterade på datum. typ som lagras i appen.
+  blodningar: Array<{ datum: string; typ: string; flode: string }>;
+  // Datum då hon startade en ny p-pillerkarta (ppiller:-noter inom fönstret).
+  kartstarter: string[];
+  // Uppehåll i p-pillren (ppaus:-noter) som överlappar fönstret.
+  uppehall: Array<{ start: string; slut: string | null; pagar: boolean }>;
 }
 
 /** Senaste `days` dagarna (inklusive idag) + alla omgångar. Inget kapas inom intervallet. */
@@ -214,7 +220,33 @@ export function buildAiInput(rows: RecordRow[], today: string, days = 150): AiIn
     }))
     .filter((c) => c.start)
     .sort((a, b) => (a.start < b.start ? -1 : 1));
-  return { idag: today, dagar, omgangar };
+  // Blödningar: datumet ligger i data.date (nyckeln på servern är ett uid).
+  const blodningar = liveRows(rows, "bleeding")
+    .map((r) => ({
+      datum: String(r.data?.["date"] ?? ""),
+      typ: String(r.data?.["type"] ?? ""),
+      flode: String(r.data?.["flow"] ?? ""),
+    }))
+    .filter((b) => ISO.test(b.datum) && b.datum >= from && b.datum <= today)
+    .sort((a, b) => (a.datum < b.datum ? -1 : a.datum > b.datum ? 1 : 0));
+  // Kartstarter: datum ur data.date, annars ur nyckeln "ppiller:YYYY-MM-DD".
+  const kartstarter = liveRows(rows, "notes")
+    .filter((r) => r.key.startsWith("ppiller:"))
+    .map((r) => String(r.data?.["date"] ?? r.key.slice("ppiller:".length)))
+    .filter((d) => ISO.test(d) && d >= from && d <= today)
+    .sort();
+  // Uppehåll: dagarna är start <= d < slut (pågående: till och med idag).
+  // Tas med om de överlappar fönstret.
+  const uppehall = liveRows(rows, "notes")
+    .filter((r) => r.key.startsWith("ppaus:"))
+    .map((r) => {
+      const end = r.data?.["end"];
+      const slut = typeof end === "string" && ISO.test(end) ? end : null;
+      return { start: String(r.data?.["start"] ?? ""), slut, pagar: slut === null };
+    })
+    .filter((u) => ISO.test(u.start) && u.start <= today && (u.slut === null || u.slut > from))
+    .sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+  return { idag: today, dagar, omgangar, blodningar, kartstarter, uppehall };
 }
 
 // ---------------------------------------------------------------------------
@@ -233,12 +265,29 @@ export function parseSignal(raw: unknown): Signal {
   // dags utan text vore en tom notis: behandla som ingen signal.
   if (o.dags && (!o.text.trim() || !o.text_partner.trim())) return { ...NO_SIGNAL };
   if (!o.dags) return { dags: false, sakerhet: o.sakerhet, liknar, text: "", text_partner: "" };
-  return {
+  return scrubSignal({
     dags: true,
     sakerhet: o.sakerhet,
     liknar,
     text: o.text.trim(),
     text_partner: o.text_partner.trim(),
+  });
+}
+
+// Ord som inte får synas för partnern respektive på hennes låsskärm.
+// Omskrivningar som "cykeln" och "den röda veckan" fångas också.
+const PARTNER_FORBIDDEN =
+  /blöd|blod|mens|p-piller|piller|preventiv|hormon|cykel|röda (dag|veck)|uppehåll|bortfall|karta|anteckn/i;
+const TEXT_FORBIDDEN = /blöd|blod|mens|bortfall|röda (dag|veck)/i;
+const SAFE_PARTNER_TEXT = "Det ser ut som att en tyngre period kan vara på väg.";
+const SAFE_TEXT = "Dina senaste dagar liknar en tidigare period som blev tyngre. Kanske dags att känna efter?";
+
+/** Säkerhetsnät: byt ut texter som råkar avslöja känsliga detaljer. */
+export function scrubSignal(s: Signal): Signal {
+  return {
+    ...s,
+    text: TEXT_FORBIDDEN.test(s.text) ? SAFE_TEXT : s.text,
+    text_partner: PARTNER_FORBIDDEN.test(s.text_partner) ? SAFE_PARTNER_TEXT : s.text_partner,
   };
 }
 
