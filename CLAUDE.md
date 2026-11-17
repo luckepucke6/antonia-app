@@ -58,10 +58,12 @@ courses. Later sections in the script: (e) Mående, (f) Medicin, (g) Blödningar
 of "heavy days" — see `dayClass` — and a printable report). There is also a fifth
 store, `notes` (`keyPath: "key"`). Settings is opened from the gear in the header.
 
-Idag order (`renderIdag`): greeting + date -> quick logging -> (on a heavy period
-the collapsed support row `<details class="support-fold">`, state in
-`supportFoldOpen`) -> signal card -> medicine -> discrete rows (pause, bleeding,
-avoid) -> support row (collapsed, at the bottom when it is not a heavy period).
+Idag order (`renderIdag`): greeting + date -> status chips (`buildIdagChips`:
+medicine, pause only during a pill break, bleeding; a tap logs today's dose or
+opens Medicin/Blödningar) -> scale card (all four scales always visible, "Klart
+för idag" row when all are filled) -> (on a heavy period the collapsed support
+row `<details class="support-fold">`, state in `supportFoldOpen`) -> signal card
+-> avoid -> support row (collapsed, at the bottom when it is not a heavy period).
 Support content is never shown expanded by default.
 
 Things that live in existing stores rather than their own:
