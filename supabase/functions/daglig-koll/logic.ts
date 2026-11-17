@@ -61,15 +61,52 @@ export function shiftDay(iso: string, n: number): string {
   return `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}`;
 }
 
-/** Timfönster (inklusive) per sort, svensk tid. */
-export const HOURS: Record<"med" | "logg" | "ai", [number, number]> = {
-  med: [8, 11],
-  logg: [20, 22],
-  ai: [21, 23],
-};
+/** Hennes valda notistimmar (svensk tid, heltal 0-23). */
+export interface NotifyHours {
+  logg: number;
+  med: number;
+}
 
-export function hourEligible(kind: "med" | "logg" | "ai", hour: number): boolean {
-  const [a, b] = HOURS[kind];
+/** Standard när inget (giltigt) val finns: kvällspåminnelse 21, tablett 9. */
+export const DEFAULT_HOURS: NotifyHours = { logg: 21, med: 9 };
+
+/** Hur många timmar ett fönster varar (vald timme + 2), så en missad körning ger nya försök. */
+const WINDOW_SPAN = 2;
+
+/** "ai" har ett fast fönster (inklusive), svensk tid. */
+export const AI_WINDOW: [number, number] = [21, 23];
+
+function validHour(v: unknown): v is number {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 23;
+}
+
+/**
+ * Läser notes/notis-tider ur raderna. Raderad rad eller ogiltigt värde
+ * (inte heltal 0-23) ger standardvärdet för just det fältet.
+ */
+export function notifyHours(rows: RecordRow[]): NotifyHours {
+  const row = liveRows(rows, "notes").find((r) => r.key === "notis-tider");
+  const d = row?.data ?? {};
+  return {
+    logg: validHour(d["logg"]) ? d["logg"] : DEFAULT_HOURS.logg,
+    med: validHour(d["med"]) ? d["med"] : DEFAULT_HOURS.med,
+  };
+}
+
+/** Timfönster (inklusive) för en sort: vald timme h till min(h+2, 23). */
+export function hourWindow(kind: "med" | "logg" | "ai", hours: NotifyHours = DEFAULT_HOURS): [number, number] {
+  if (kind === "ai") return AI_WINDOW;
+  const h = hours[kind];
+  return [h, Math.min(h + WINDOW_SPAN, 23)];
+}
+
+/** Är klockslaget (0-23) inom sortens fönster? */
+export function hourEligible(
+  kind: "med" | "logg" | "ai",
+  hour: number,
+  hours: NotifyHours = DEFAULT_HOURS,
+): boolean {
+  const [a, b] = hourWindow(kind, hours);
   return hour >= a && hour <= b;
 }
 

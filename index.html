@@ -11,7 +11,10 @@
 
   <!-- PWA-manifest -->
   <link rel="manifest" href="manifest.json" />
-  <meta name="theme-color" content="#FAF4F2" />
+  <meta name="theme-color" content="#FAF4F2" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#1E1719" media="(prefers-color-scheme: dark)" />
+  <!-- Följ telefonens ljust/mörkt-läge (påverkar även inbyggda datumväljare) -->
+  <meta name="color-scheme" content="light dark" />
 
   <!-- iOS: gör att appen körs i helskärm (standalone) från hemskärmen -->
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -26,14 +29,43 @@
     :root {
       --bg: #FAF4F2;        /* sidbakgrund (cream rose) */
       --card: #FFFFFF;      /* kort/paneler */
-      --accent: #C68A95;    /* dusty rose – aktiv flik, knappar */
+      --accent: #9A5362;    /* dusty rose – aktiv flik, knappar (>=4.5:1 mot vit text och mot kort) */
       --accent-soft: #F3E6E8; /* mjuk accent-bakgrund */
+      --tone-hi: 140, 60, 78;   /* kalenderns tunga nivåer (4–5), vit text >=4.5:1 */
       --text: #463A3D;      /* huvudtext (plum brown) */
-      --muted: #A8979B;     /* dämpad text (mauve gray) */
+      --muted: #76646A;     /* dämpad text (mauve gray, >=4.5:1) */
       --line: #EFE6E3;      /* tunna avgränsare */
+      --on-accent: #FFFFFF; /* text/ytor ovanpå --accent */
+      --toast-bg: rgba(70, 58, 61, 0.92);
+      --toast-text: #FFFFFF;
+      --ok-fg: #33694c;     /* "Tagen idag" */
+      --ok-bg: #e4f1e8;
+      --shadow-accent: rgba(154, 83, 98, 0.35);
+      color-scheme: light dark;
 
       --tabbar-height: 58px;
       --radius: 16px;
+    }
+
+    /* Mörkt läge: följer iPhonens inställning. Varm plommonpalett. */
+    @media screen and (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1E1719;
+        --card: #2A2124;
+        --accent: #E0A3AF;      /* dämpad rosa, >=4.5:1 som text mot kort och bg */
+        --accent-soft: #3A2A30;
+        --tone-hi: 170, 88, 104;
+        --text: #F2E6E8;
+        --muted: #B5A2A7;
+        --line: #3C3135;
+        --on-accent: #1E1719;   /* mörk text på den ljusa rosa knappen */
+        --toast-bg: rgba(242, 230, 232, 0.94);
+        --toast-text: #1E1719;
+        --ok-fg: #8FD1A8;
+        --ok-bg: #243A2D;
+        --shadow-accent: rgba(0, 0, 0, 0.4);
+      }
+      .card, .status-card.active { box-shadow: none; }
     }
 
     * { box-sizing: border-box; }
@@ -129,7 +161,7 @@
       margin-top: 12px;
       font-size: 1rem;
       font-weight: 600;
-      color: #fff;
+      color: var(--on-accent);
       background: var(--accent);
       border: none;
       border-radius: 12px;
@@ -367,7 +399,7 @@
       margin-top: 18px;
       padding-top: 8px;
     }
-    .save-bar .btn { margin-top: 0; box-shadow: 0 4px 16px rgba(198,138,149,0.35); }
+    .save-bar .btn { margin-top: 0; box-shadow: 0 4px 16px var(--shadow-accent); }
 
     /* Liten bekräftelse-bubbla (återanvändbar) */
     .toast {
@@ -375,12 +407,12 @@
       left: 50%;
       bottom: calc(var(--tabbar-height) + env(safe-area-inset-bottom) + 24px);
       transform: translateX(-50%) translateY(8px);
-      z-index: 20;
+      z-index: 40;   /* över intro-overlayen (30) */
       padding: 11px 20px;
       font-size: 0.95rem;
       font-weight: 600;
-      color: #fff;
-      background: rgba(70, 58, 61, 0.92);
+      color: var(--toast-text);
+      background: var(--toast-bg);
       border-radius: 999px;
       box-shadow: 0 6px 20px rgba(70, 58, 61, 0.25);
       opacity: 0;
@@ -410,9 +442,9 @@
       margin-top: 14px;
       padding: 14px 16px;
       background: var(--accent);
-      color: #fff;
+      color: var(--on-accent);
       border-radius: var(--radius);
-      box-shadow: 0 4px 16px rgba(198, 138, 149, 0.35);
+      box-shadow: 0 4px 16px var(--shadow-accent);
     }
     .med-banner .banner-icon { font-size: 1.5rem; line-height: 1; }
     .med-banner .banner-text { flex: 1; font-weight: 600; font-size: 0.96rem; }
@@ -422,7 +454,7 @@
       font-size: 0.9rem;
       font-weight: 700;
       color: var(--accent);
-      background: #fff;
+      background: var(--on-accent);
       border: none;
       border-radius: 999px;
       cursor: pointer;
@@ -465,8 +497,8 @@
       padding: 5px 12px;
       font-size: 0.85rem;
       font-weight: 600;
-      color: #3f7a5a;
-      background: #e4f1e8;
+      color: var(--ok-fg);
+      background: var(--ok-bg);
       border-radius: 999px;
     }
 
@@ -490,7 +522,7 @@
       -webkit-tap-highlight-color: transparent;
     }
     .dose-opt.selected {
-      color: #fff;
+      color: var(--on-accent);
       background: var(--accent);
       border-color: var(--accent);
     }
@@ -521,7 +553,7 @@
       -webkit-tap-highlight-color: transparent;
     }
     .tag-opt.selected {
-      color: #fff;
+      color: var(--on-accent);
       background: var(--accent);
       border-color: var(--accent);
     }
@@ -667,6 +699,7 @@
     }
 
     /* Stödkortet för tyngre dagar (Idag). Lugnt och varmt – inga larmfärger. */
+    .quick-ok { color: var(--muted); font-size: 0.85rem; font-weight: 400; }
     .support-title { font-size: 1.05rem; font-weight: 600; margin-top: 4px; }
     .support-group {
       margin-top: 16px;
@@ -755,12 +788,12 @@
       -webkit-tap-highlight-color: transparent;
     }
     .cal-day.has { box-shadow: none; }
-    .cal-day.dark { color: #fff; }
+    .cal-day.dark { color: #fff; } /* ligger på den mörka nivåfärgen (tone), i båda lägena */
     .cal-day.today { box-shadow: inset 0 0 0 2px var(--accent); }
     .cal-day.sel { box-shadow: 0 0 0 2px var(--text); }
     .cal-day.future { color: var(--muted); opacity: 0.45; cursor: default; }
     .cal-marks { display: flex; align-items: center; gap: 3px; height: 7px; }
-    .cal-marks i, .cal-legend i.m { display: block; outline: 1px solid #fff; }
+    .cal-marks i, .cal-legend i.m { display: block; outline: 1px solid var(--card); }
     .m-med { width: 12px; height: 4px; border-radius: 2px; background: #3D7FB8; }
     .m-med.soft { opacity: 0.4; }
     .m-bleed { width: 7px; height: 7px; border-radius: 50%; background: #A8404F; }
@@ -846,6 +879,8 @@
     /* Läkarrapporten: syns bara vid utskrift. */
     #print-report { display: none; }
     @media print {
+      /* Utskriften är alltid ljus, oavsett mörkt läge */
+      :root { color-scheme: light; --bg: #fff; --card: #fff; --text: #000; --muted: #444; --line: #999; }
       .app-header, .tabbar, .toast, main { display: none !important; }
       body { background: #fff; padding: 0; }
       #print-report { display: block; padding: 0; color: #000; font-size: 9pt; }
@@ -891,7 +926,7 @@
       border-radius: 999px;
     }
     .bleed-tag.mellan  { color: var(--muted);  background: var(--accent-soft); }
-    .bleed-tag.mens    { color: #fff;          background: var(--accent); }
+    .bleed-tag.mens    { color: var(--on-accent);          background: var(--accent); }
     .bleed-tag.blandat { color: var(--accent); background: var(--accent-soft); }
 
     /* Detaljrad i en utfälld händelse: datum + flöde/mående + redigera/ta bort. */
@@ -981,6 +1016,47 @@
       font-weight: 700;
       letter-spacing: -0.01em;
     }
+
+    /* Notistider (Inställningar + intro): etikett + välj timme */
+    .tider-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; }
+    .tider-row label { font-weight: 600; font-size: 0.95rem; }
+    .tider-row small { display: block; font-weight: 400; font-size: 0.8rem; color: var(--muted); }
+    .tider-row select {
+      flex: none;
+      padding: 9px 10px;
+      font: inherit;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+    }
+
+    /* Intro första gången: overlay över hela appen, scrollar på små skärmar */
+    .intro-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      display: flex;
+      padding: calc(env(safe-area-inset-top, 0px) + 16px) 16px calc(env(safe-area-inset-bottom, 0px) + 16px);
+      background: rgba(20, 12, 14, 0.55);
+    }
+    .intro-overlay .card { margin: auto; width: 100%; max-width: 420px; }
+    .intro-overlay h2 { margin: 0 0 8px; font-size: 1.3rem; }
+    .intro-overlay p { margin: 8px 0 0; }
+    .intro-skip {
+      display: block;
+      margin: 14px auto 0;
+      padding: 8px;
+      font: inherit;
+      font-size: 0.9rem;
+      color: var(--muted);
+      background: none;
+      border: none;
+      text-decoration: underline;
+      cursor: pointer;
+    }
   </style>
 </head>
 
@@ -1010,6 +1086,10 @@
 
     <!-- 2. Daglig måendecheck -->
     <section id="view-maende" class="view">
+      <!-- Tips: de fyra snabbskalorna finns på Idag. -->
+      <p class="hint" style="text-align:center;margin:0 0 10px;">
+        Humör, ångest, irritabilitet och mage fyller du snabbt på Idag. Här kan du fylla i mer om du orkar.
+      </p>
       <!-- Datum för check-in:en (default idag, går att bläddra bakåt) -->
       <div class="date-nav">
         <button class="nav-btn" id="mood-prev" aria-label="Föregående dag">‹</button>
@@ -1159,6 +1239,8 @@
         <p class="hint" style="margin-top:6px;" id="notis-status" aria-live="polite"></p>
         <button class="btn" type="button" id="btn-notis-on" hidden>Slå på notiser</button>
         <button class="btn secondary" type="button" id="btn-notis-off" hidden>Stäng av notiser på den här telefonen</button>
+        <!-- Påminnelsetider (fylls av fillNotisTider; dolt i partnerläge) -->
+        <div id="notis-tider" hidden></div>
       </div>
 
       <!-- Utvecklare: bara för partner-läge eller demoläge (styrs av renderDevUI). -->
@@ -1248,6 +1330,8 @@
       if (name === "medicin") renderMedicin();
       if (name === "blodningar") renderBleeding();
       if (name === "monster") renderMonster();
+      // Fyll tidsvalen på nytt så de visar det som faktiskt är sparat.
+      if (name === "installningar" && !partnerMode) fillNotisTider(document.getElementById("notis-tider"));
       if (name === "partner") renderPartner();
     }
 
@@ -2723,8 +2807,8 @@
        =================================================================== */
     const idagContent = document.getElementById("idag-content");
 
-    // Nyckeltal som lyfts fram i måendesammanfattningen (i denna ordning).
-    const IDAG_MOOD_KEYS = ["humor", "energi", "angest"];
+    // De fyra skalorna i snabbloggningen på Idag (id:n ur MOOD_METRICS).
+    const QUICK_KEYS = ["humor", "angest", "irritabilitet", "magbesvar"];
 
     // Tidsanpassad hälsning – hålls enkel och varm.
     function greetingFor(d) {
@@ -2739,40 +2823,92 @@
       return String(n).replace(".", ",");
     }
 
-    // En chip: emoji + etikett för en ifylld måendeskattning.
-    function moodChip(metric, value) {
-      const emoji = EMOJI[metric.scale][value - 1];
-      return '<span class="chip">' + emoji + " " + metric.label + "</span>";
+    // Snabbloggning: fyra skalor som sparas direkt vid varje tryck.
+    let quickOpen = false;     // skalorna utfällda trots att alla fyra är ifyllda
+    let quickFlash = false;    // visar en diskret bock efter senaste sparning
+
+    // En skalrad. Samma utseende som i Mående (.metric/.faces/.face);
+    // intensity-skalor visas spegelvända så det positiva alltid ligger till höger.
+    // (Bara visningen vänds – lagrade värden betyder samma som förr.)
+    function quickRow(m, selected) {
+      const flip = m.scale === "intensity";
+      let faceList = EMOJI[m.scale].map((emoji, i) =>
+        '<button class="face' + (selected === i + 1 ? " selected" : "") +
+        '" type="button" data-qid="' + m.id + '" data-value="' + (i + 1) +
+        '" aria-label="' + EMOJI_TEXT[m.scale][i] + '">' +
+        '<span class="face-emoji">' + emoji + "</span>" +
+        '<span class="face-text">' + EMOJI_TEXT[m.scale][i] + "</span></button>");
+      if (flip) faceList = faceList.reverse();
+      const leftEnd = flip ? m.high : m.low;
+      const rightEnd = flip ? m.low : m.high;
+      return '<div class="metric"><div class="metric-label">' + m.label + "</div>" +
+        '<div class="faces">' + faceList.join("") + "</div>" +
+        '<div class="scale-ends"><span>' + leftEnd + "</span><span>" + rightEnd +
+        "</span></div></div>";
     }
 
-    // Bygg "Dagens mående"-kortet.
+    // Bygg snabbloggningskortet.
     function buildIdagMood(moodRec) {
       const scores = (moodRec && moodRec.scores) || {};
-      const loggat = Object.keys(scores).length > 0 ||
-        (moodRec && (moodRec.sleepHours != null || moodRec.note ||
-                     (moodRec.tags && moodRec.tags.length)));
+      const metrics = QUICK_KEYS.map((id) => MOOD_METRICS.find((m) => m.id === id));
+      const filled = QUICK_KEYS.filter((id) => scores[id] != null).length;
+      const done = filled === QUICK_KEYS.length;
+      const flash = quickFlash ? ' <span class="quick-ok" aria-label="Sparat">✓</span>' : "";
 
-      let html = '<div class="card">';
-      html += '<div class="status-eyebrow">Dagens mående</div>';
-
-      if (loggat) {
-        // Chips för de viktigaste nyckeltalen som faktiskt fyllts i.
-        const chips = IDAG_MOOD_KEYS
-          .filter((id) => scores[id] != null)
-          .map((id) => moodChip(MOOD_METRICS.find((m) => m.id === id), scores[id]));
-        if (moodRec.sleepHours != null) {
-          chips.push('<span class="chip">💤 ' + fmtHours(moodRec.sleepHours) + " tim</span>");
-        }
-        html += chips.length
-          ? '<div class="summary-chips">' + chips.join("") + "</div>"
-          : '<p class="status-sub" style="margin:8px 0 0">Loggat för idag ✓</p>';
-        html += '<button type="button" class="btn secondary" data-act="mood">Ändra</button>';
+      let html = '<div class="card" id="quick-card">';
+      if (done) {
+        html += '<div class="support-title">Klart för idag 💗' + flash + "</div>";
+        html += '<p class="status-sub" style="margin:6px 0 0">' +
+          "Orkar du så kan du fylla i mer – det gör mönstren tydligare.</p>";
+        html += '<button type="button" class="btn secondary" data-act="mood">Fyll i mer</button>';
+        html += '<button type="button" class="text-btn" data-act="quick-toggle">' +
+          (quickOpen ? "Dölj" : "Ändra") + "</button>";
+        if (quickOpen) html += metrics.map((m) => quickRow(m, scores[m.id])).join("");
       } else {
-        html += '<p class="status-sub" style="margin:8px 0 12px">' +
-          "Hur känns dagen? En liten check-in hjälper dig se mönster över tid.</p>";
-        html += '<button type="button" class="btn" data-act="mood">Logga dagens mående</button>';
+        html += '<div class="support-title">Hur har dagen varit?' + flash + "</div>";
+        html += '<p class="status-sub" style="margin:6px 0 0">Fyra tryck räcker.</p>';
+        html += metrics.map((m) => quickRow(m, scores[m.id])).join("");
       }
       return html + "</div>";
+    }
+
+    // Spara ett tryck direkt: slå ihop med dagens post och bevara allt annat.
+    // Köas så att snabba tryck i rad inte skriver över varandra.
+    let quickChain = Promise.resolve();
+    function quickSave(id, value) {
+      quickChain = quickChain.then(async () => {
+        const today = todayISO();
+        const old = (await getRecord("mood", today)) || { date: today };
+        const rec = { ...old, scores: { ...(old.scores || {}) } };
+        if (rec.scores[id] === value) delete rec.scores[id];   // samma värde = avmarkera
+        else rec.scores[id] = value;
+        delete rec.estimated;            // sparar hon själv är dagen inte uppskattad
+        rec.updatedAt = new Date().toISOString();
+        // Helt tom post efter avmarkering tas bort i stället för att sparas.
+        const empty = Object.keys(rec.scores).length === 0 && !rec.note &&
+          !(rec.tags && rec.tags.length) && rec.sleepHours == null;
+        if (empty) await deleteRecord("mood", today);
+        else await addRecord("mood", rec);
+        // Håll Mående-vyns state i synk så en senare Spara där inte skriver över.
+        // Bara den ändrade skalan synkas, så osparad text i Mående inte försvinner.
+        if (moodDate === today) {
+          if (rec.scores[id] != null) selections[id] = rec.scores[id];
+          else delete selections[id];
+          renderMetric(id);
+          document.getElementById("mood-estimated").hidden = true;
+        }
+        quickFlash = true;
+        // Ankra scrollen mot snabbkortet så det står still när sidan ritas om.
+        const qc = document.getElementById("quick-card");
+        const before = qc ? qc.getBoundingClientRect().top : null;
+        await renderIdag();
+        const qc2 = document.getElementById("quick-card");
+        if (before != null && qc2) window.scrollBy(0, qc2.getBoundingClientRect().top - before);
+      }).catch((err) => {
+        console.error("quickSave", err);
+        showToast("Kunde inte spara – försök igen");
+      });
+      return quickChain;
     }
 
     // Bygg "Medicin"-kortet (pågående omgång vs ingen).
@@ -2831,12 +2967,14 @@
         ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]));
     }
 
-    // En "tung dag": lågt humör, hög ångest/oro eller stark självkritik
-    // (bara ifyllda värden).
+    // En "tung dag" utgår från snabblägets skalor: humör 1–2, ångest 4–5 eller
+    // irritabilitet 4–5. Hög självkritik räknas också om hon har fyllt i den.
+    // Bara ifyllda värden räknas – saknas värden är dagen inte tung.
     function isHeavyDay(rec) {
       const s = (rec && rec.scores) || {};
       return (s.humor != null && s.humor <= 2) ||
              (s.angest != null && s.angest >= 4) ||
+             (s.irritabilitet != null && s.irritabilitet >= 4) ||
              (s.sjalvkritik != null && s.sjalvkritik >= 4);
     }
 
@@ -2977,9 +3115,10 @@
     }
 
     // Bygg om hela Idag-vyn från databasen.
+    let welcomeDecision = { date: "", value: false };
     async function renderIdag() {
       const today = todayISO();
-      const [moodRec, courses, meds, bleed, mood1, mood2, helps, avoid, signal] = await Promise.all([
+      const [moodRec, courses, meds, bleed, mood1, mood2, helps, avoid, signal, allMood] = await Promise.all([
         getRecord("mood", today), getAll("courses"),
         getAll("medication"), getAll("bleeding"),
         getRecord("mood", shiftDate(today, -1)),
@@ -2987,37 +3126,73 @@
         getRecord("notes", "helps"),
         getRecord("notes", "avoid"),
         getRecord("notes", "signal"),
+        getAll("mood"),
       ]);
       const recentMood = [moodRec, mood1, mood2];
+
+      // Välkommen tillbaka: ingen post idag och senaste egna loggning minst 4 dagar sedan.
+      // Inget om missade dagar – bara en varm hälsning.
+      // Beslutet sparas per dag så hälsningen inte byts redan vid första trycket.
+      let welcomeBack = false;
+      if (welcomeDecision.date === today) {
+        welcomeBack = welcomeDecision.value;
+      } else {
+        if (!moodRec) {
+        const lastDate = allMood.filter((r) => !r.estimated && r.date < today)
+          .reduce((mx, r) => (r.date > mx ? r.date : mx), "");
+        welcomeBack = lastDate !== "" && lastDate <= shiftDate(today, -4);
+        }
+        welcomeDecision = { date: today, value: welcomeBack };
+      }
 
       const dateStr = new Intl.DateTimeFormat("sv-SE", {
         weekday: "long", day: "numeric", month: "long",
       }).format(new Date(today + "T00:00:00"));
 
-      let html = '<div class="greeting">' + greetingFor(new Date()) + " 💗</div>";
+      let html = '<div class="greeting">' +
+        (welcomeBack ? "Välkommen tillbaka" : greetingFor(new Date())) + " 💗</div>";
       html += '<div class="greeting-date">' + dateStr + "</div>";
       const support = buildSupport(recentMood, (helps && helps.text) || "", today);
       // En tung dag hamnar stödet överst, annars som en diskret länk längst ner.
-      const supportFirst = !support.startsWith("<button");
+      const supportCard = !support.startsWith("<button");
+      // Stödet hamnar inte över snabbskalorna förrän de är klara, om det bara är
+      // idag som gör perioden tung (annars skulle kortet trycka ner skalorna).
+      const quickComplete = QUICK_KEYS.every((k) => moodRec && moodRec.scores && moodRec.scores[k] != null);
+      const afterQuick = supportCard && isLowPeriod(recentMood) && !quickComplete &&
+        !isLowPeriod([undefined, mood1, mood2]);
+      const supportFirst = supportCard && !afterQuick;
       html += buildSignal(signal, courses, today);
       if (supportFirst) html += support;
       html += buildIdagMood(moodRec);
+      if (afterQuick) html += support;
       html += buildIdagMed(courses, meds, today);
+      // Diskreta rader längst ner: blödning, undvik, stöd.
       html += buildIdagBleed(bleed, today);
       html += buildAvoid((avoid && avoid.text) || "");
-      if (!supportFirst) html += support;
+      if (!supportCard) html += support;   // bara den diskreta länken
+      quickFlash = false;
 
       idagContent.innerHTML = html;
     }
 
     // Delegerad klick-hantering (sätts en gång; innehållet byts ut vid render).
     idagContent.addEventListener("click", async (e) => {
+      // Tryck på en skala i snabbloggningen sparas direkt.
+      const face = e.target.closest(".face[data-qid]");
+      if (face) {
+        await quickSave(face.dataset.qid, Number(face.dataset.value));
+        return;
+      }
       const actEl = e.target.closest("[data-act]");
       if (!actEl) return;
       switch (actEl.dataset.act) {
         case "mood":
           loadMoodForDate(todayISO());        // se till att Mående visar idag
           showView("maende", "Mående");
+          break;
+        case "quick-toggle":
+          quickOpen = !quickOpen;
+          await renderIdag();
           break;
         case "med-today":
           await logToday();                   // använder DEFAULT_DOSE (snabbknapp)
@@ -3151,7 +3326,10 @@
       return days;
     }
 
-    const tone = (level) => "rgba(176,96,112," + (level / 5).toFixed(2) + ")";
+    // Nivå 4–5 använder --tone-hi (mörkare i ljust läge) så vit text når >=4.5:1;
+    // nivå 1–3 har mörk text (--text) på ljus färg.
+    const tone = (level) => (level >= 4 ? "rgba(var(--tone-hi)," : "rgba(170,88,104,") +
+      (level / 5).toFixed(2) + ")";
 
     /* --- Dagens "tyngd" ---
        level 1–5 för det som kalendern ska färga efter. "helhet" = snittet av
@@ -3826,7 +4004,66 @@
       return reg ? reg.pushManager.getSubscription() : null;
     }
 
+    /* --- Påminnelsetider ---
+       Sparas som notes-posten "notis-tider" { logg, med } (hela timmar, JSON-tal).
+       Servern (daglig-koll) läser dem och skickar högst en påminnelse av varje
+       sort per dag. Samma kontroller används i Inställningar och i introt. */
+    const NOTIS_DEFAULT = { logg: 21, med: 9 };
+
+    // Läs sparade tider; standard om posten saknas eller är trasig.
+    async function loadNotisTider() {
+      let rec = null;
+      try { rec = await getRecord("notes", "notis-tider"); } catch (_) { /* standard */ }
+      const ok = (v, d) => (Number.isInteger(v) && v >= 0 && v <= 23 ? v : d);
+      return { logg: ok(rec && rec.logg, NOTIS_DEFAULT.logg), med: ok(rec && rec.med, NOTIS_DEFAULT.med) };
+    }
+
+    // <option> för 00:00–23:00 med vald timme.
+    function hourOptions(sel) {
+      let o = "";
+      for (let h = 0; h < 24; h++) {
+        o += '<option value="' + h + '"' + (h === sel ? " selected" : "") + ">" +
+             String(h).padStart(2, "0") + ":00</option>";
+      }
+      return o;
+    }
+
+    // Fyller en behållare med de två valen och sparar direkt vid ändring.
+    async function fillNotisTider(root) {
+      const t = await loadNotisTider();
+      root.innerHTML =
+        '<div class="tider-row"><label for="' + root.id + '-logg">Kvällspåminnelse</label>' +
+        '<select id="' + root.id + '-logg">' + hourOptions(t.logg) + "</select></div>" +
+        '<div class="tider-row"><label for="' + root.id + '-med">Tablettpåminnelse' +
+        "<small>Bara när en omgång pågår</small></label>" +
+        '<select id="' + root.id + '-med">' + hourOptions(t.med) + "</select></div>" +
+        '<p class="hint">Du får högst en påminnelse av varje sort per dag.</p>';
+      root.onchange = async (ev) => {
+        // Bara det ändrade fältet skrivs; det andra hämtas från den sparade posten
+        // (så en gammal ifylld vy inte skriver över ett värde ändrat på annat håll).
+        const sel = ev.target;
+        const field = sel && sel.id === root.id + "-logg" ? "logg" : sel && sel.id === root.id + "-med" ? "med" : null;
+        const v = sel ? parseInt(sel.value, 10) : NaN;   // heltal, inte text
+        if (!field || !Number.isInteger(v)) return;
+        // Köas så att två snabba ändringar inte läser samma gamla post.
+        notisTiderChain = notisTiderChain.then(async () => {
+          const cur = await loadNotisTider();
+          await addRecord("notes", { key: "notis-tider", logg: cur.logg, med: cur.med, [field]: v });
+          showToast("Sparat ✓");
+        }).catch((err) => {
+          console.warn("Kunde inte spara notistider:", err);
+          showToast("Kunde inte spara – försök igen");
+        });
+        return notisTiderChain;
+      };
+    }
+    let notisTiderChain = Promise.resolve();
+
     async function renderNotisUI(msg) {
+      // Tidsvalen visas inte i partnerläge.
+      const tider = document.getElementById("notis-tider");
+      tider.hidden = partnerMode;
+      if (!partnerMode) fillNotisTider(tider);
       const st = document.getElementById("notis-status");
       const on = document.getElementById("btn-notis-on");
       const off = document.getElementById("btn-notis-off");
@@ -3893,6 +4130,97 @@
       await renderNotisUI();
     });
 
+    /* --- Intro första gången ---
+       Två kort i en overlay. Visas en gång (nyckel "intro-sedd") och inte för
+       partner eller i demoläget. */
+    function closeIntro() {
+      const el = document.getElementById("intro-overlay");
+      if (el) el.remove();
+      // Introt kan ha ändrat tiderna: fyll Inställningarnas val på nytt.
+      const t = document.getElementById("notis-tider");
+      if (t && !partnerMode) fillNotisTider(t);
+    }
+    function finishIntro() {
+      try { localStorage.setItem(lsKey("intro-sedd"), "1"); } catch (_) { /* ok */ }
+      closeIntro();
+    }
+
+    function showIntroStep(step) {
+      const box = document.getElementById("intro-box");
+      if (step === 1) {
+        box.innerHTML =
+          "<h2>Välkommen till din dagbok 💗</h2>" +
+          "<p>Några tryck om dagen räcker för att du ska kunna se mönster över tid.</p>" +
+          "<p>Det är helt okej att missa dagar – dagboken blir användbar ändå.</p>" +
+          "<p>Allt sparas på din telefon.</p>" +
+          '<button class="btn" type="button" id="intro-next">Nästa</button>' +
+          '<button class="intro-skip" type="button" id="intro-skip">Hoppa över</button>';
+        document.getElementById("intro-next").onclick = () => showIntroStep(2);
+      } else {
+        const canPush = "Notification" in window && "PushManager" in window && "serviceWorker" in navigator;
+        let action;
+        if (!canPush) {
+          // iPhone: push fungerar bara från hemskärmsappen.
+          action = '<p class="hint">Notiser fungerar bara när appen ligger på hemskärmen. ' +
+                   "Lägg till den via Dela-knappen i Safari och öppna den därifrån.</p>";
+        } else if (!syncUser) {
+          action = '<p class="hint">Logga in under Inställningar för att kunna få notiser.</p>';
+        } else {
+          action = '<button class="btn secondary" type="button" id="intro-notis">Slå på notiser</button>';
+        }
+        box.innerHTML =
+          "<h2>Påminnelser</h2>" +
+          "<p>En mjuk påminnelse på kvällen gör det lättare att komma ihåg att logga.</p>" +
+          action +
+          '<div id="intro-tider"></div>' +
+          '<button class="btn" type="button" id="intro-done">Klar</button>' +
+          '<button class="intro-skip" type="button" id="intro-skip">Hoppa över</button>';
+        fillNotisTider(document.getElementById("intro-tider"));
+        document.getElementById("intro-done").onclick = finishIntro;
+        const b = document.getElementById("intro-notis");
+        if (b) b.onclick = async () => {
+          await enableNotis();   // samma flöde som Notiser-kortet
+          // Avgör utfallet på den faktiska prenumerationen, inte på behörigheten.
+          let sub = null;
+          try { sub = await currentPushSub(); } catch (_) { /* räknas som av */ }
+          let err = document.getElementById("intro-notis-fel");
+          if (sub) {
+            b.textContent = "Notiser är på ✓"; b.disabled = true;
+            if (err) err.remove();
+          } else {
+            // Visa en kort feltext och låt knappen vara klickbar.
+            const st = document.getElementById("notis-status");
+            const txt = (st && st.textContent) ||
+              "Det gick inte att slå på notiser just nu. Du kan försöka igen under Inställningar.";
+            if (!err) {
+              err = document.createElement("p");
+              err.id = "intro-notis-fel";
+              err.className = "hint";
+              b.insertAdjacentElement("afterend", err);
+            }
+            err.textContent = txt;
+          }
+        };
+      }
+      document.getElementById("intro-skip").onclick = finishIntro;
+    }
+
+    function maybeShowIntro() {
+      if (DEMO_MODE || partnerMode || document.getElementById("intro-overlay")) return;
+      try {
+        if (localStorage.getItem(lsKey("intro-sedd"))) return;
+        if (localStorage.getItem("partner-user")) return;   // partner (se checkPartner)
+      } catch (_) { return; }
+      const ov = document.createElement("div");
+      ov.className = "intro-overlay";
+      ov.id = "intro-overlay";
+      ov.setAttribute("role", "dialog");
+      ov.setAttribute("aria-modal", "true");
+      ov.innerHTML = '<div class="card" id="intro-box"></div>';
+      document.body.appendChild(ov);
+      showIntroStep(1);
+    }
+
     // En notis (eller en länk med #vy) öppnar rätt vy.
     function openViewByName(view) {
       if (partnerMode && !DEMO_MODE) { showView("partner", "Översikt"); return; }
@@ -3920,6 +4248,7 @@
     function enterPartnerMode() {
       if (DEMO_MODE) return;
       partnerMode = true;
+      closeIntro();   // partner ska inte ha introt
       document.body.classList.add("partner");
       renderDevUI();
       if (currentView !== "installningar") showView("partner", "Översikt");
@@ -4254,7 +4583,11 @@
     // Öppna databasen direkt så stores skapas vid första start, och försök
     // sedan med en best-effort morgon-notis (sekundärt – se påminnelse-blocket).
     openDB()
-      .then(() => maybeNotifyMorning())
+      .then(() => {
+        maybeNotifyMorning();
+        // Vänta lite så att partnerkontroll hinner köras innan introt visas.
+        setTimeout(maybeShowIntro, 1500);
+      })
       .catch((err) => console.error("Kunde inte öppna databasen:", err));
   </script>
 </body>

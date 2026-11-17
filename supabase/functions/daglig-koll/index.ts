@@ -2,8 +2,11 @@
 //
 // Körs varje timme av pg_cron (se supabase/notiser.sql, avsnitt d). Gör, i
 // svensk tid och högst en gång per användare, sort och dag:
-//   med   – påminnelse om tablett (08–11, aktiv omgång, ingen dos loggad idag)
-//   logg  – påminnelse om dagens check-in (20–22, inget mående loggat idag)
+//   med   – påminnelse om tablett (aktiv omgång, ingen dos loggad idag)
+//   logg  – påminnelse om dagens check-in (inget mående loggat idag)
+//           Tiderna väljer hon själv (notes/notis-tider: logg, med; standard
+//           21 resp. 9). Fönstret är vald timme och två timmar framåt, så en
+//           missad körning ger nya försök. Max en notis per sort och dag.
 //   ai    – "är det dags igen?"-koll med Claude (21–23), sparar raden
 //           notes/signal och skickar ev. notis till henne och till partnern
 //
@@ -26,6 +29,7 @@ import {
   type Kind,
   needsLogReminder,
   needsMedReminder,
+  notifyHours,
   NO_SIGNAL,
   parseSignalText,
   type RecordRow,
@@ -180,15 +184,23 @@ const ROW_COLS = "store,key,data,deleted_at";
 /** Allt en ägares logik behöver: omgångar, dagens dos, och mående senaste dagarna. */
 async function loadRows(db: SupabaseClient, userId: string, today: string): Promise<RecordRow[]> {
   const from = shiftDay(today, -(AI_DAYS - 1));
-  const [courses, meds, moods] = await Promise.all([
+  const [courses, times, meds, moods] = await Promise.all([
     db.from("records").select(ROW_COLS).eq("user_id", userId).eq("store", "courses"),
+    // Hennes valda notistider (en rad).
+    db.from("records").select(ROW_COLS).eq("user_id", userId).eq("store", "notes")
+      .eq("key", "notis-tider"),
     db.from("records").select(ROW_COLS).eq("user_id", userId).eq("store", "medication")
       .eq("data->>date", today),
     db.from("records").select(ROW_COLS).eq("user_id", userId).eq("store", "mood")
       .gte("key", from).lte("key", today).order("key", { ascending: true }).limit(1000),
   ]);
-  for (const r of [courses, meds, moods]) if (r.error) throw new Error("records: " + r.error.message);
-  return [...(courses.data ?? []), ...(meds.data ?? []), ...(moods.data ?? [])] as RecordRow[];
+  for (const r of [courses, times, meds, moods]) if (r.error) throw new Error("records: " + r.error.message);
+  return [
+    ...(courses.data ?? []),
+    ...(times.data ?? []),
+    ...(meds.data ?? []),
+    ...(moods.data ?? []),
+  ] as RecordRow[];
 }
 
 async function viewersOf(db: SupabaseClient, owner: string): Promise<string[]> {
@@ -315,7 +327,9 @@ async function runOwner(
   const today = now.day;
   const rows = await loadRows(db, owner, today);
   const report: Record<string, unknown> = { owner: owner.slice(0, 8) };
-  const gate = (k: "med" | "logg" | "ai") => dry || hourEligible(k, now.hour);
+  const hours = notifyHours(rows); // hennes valda tider (eller standard)
+  // Dry-run ignorerar tidsgrinden.
+  const gate = (k: "med" | "logg" | "ai") => dry || hourEligible(k, now.hour, hours);
 
   // --- med ---------------------------------------------------------------
   if (gate("med") && needsMedReminder(rows, today)) {
@@ -326,7 +340,7 @@ async function runOwner(
         const c = await pushToSubs(db, subs, {
           title: "Dags att ta escitalopram 💊",
           body: "Glöm inte din tablett idag.",
-          view: "medicin",
+          view: "idag", // där finns knappen "Jag tog den idag"
         });
         sum.removed += c.removed;
         if (c.sent > 0) sum.med++;
@@ -342,9 +356,9 @@ async function runOwner(
       const subs = await subsOf(db, owner);
       if (subs.length && await claim(db, owner, "logg", today)) {
         const c = await pushToSubs(db, subs, {
-          title: "Hur har dagen varit? 💗",
-          body: "En snabb check-in hjälper dig se mönster.",
-          view: "maende",
+          title: "Antonias dagbok 💗",
+          body: "Hur har dagen varit? Det tar 10 sekunder 💗",
+          view: "idag",
         });
         sum.removed += c.removed;
         if (c.sent > 0) sum.logg++;
