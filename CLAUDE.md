@@ -82,6 +82,22 @@ Things that live in existing stores rather than their own:
 - Settings has two imports: "Importera" **replaces** everything, "Lägg till
   från fil" (`mergeAll`) only adds what is missing and never overwrites.
 
+## Fas 3: egna snabbval, delning, förslag, guide
+
+- `notes` key `tags` = `{ hidden: [id…], custom: [{ id, label, removed? }] }`
+  (`tagSettings`, `allTags()`, `visibleTags()`). `MOOD_TAGS` är oförändrad och id:n
+  ändras aldrig; borttagna egna val behåller sin etikett (`removed: true`) så gamla
+  dagar visar rätt text. Inställningar har kortet "Snabbval".
+- `notes` key `helps-share` = `{ on, text }`: delning av "Det här hjälper mig" med
+  partnern (kortet "Dela med Lucas"). `partner_overview()` returnerar fältet `helps`
+  (sträng eller null); partnervyn visar det bara vid tyngre period.
+- Tabellen `feedback` (+ RPC `feedback_done`) skapas av `supabase/fas3.sql`. Hennes
+  förslag ligger lokalt i `localStorage` `feedback` (`lsKey`) och skickas av
+  `flushFeedback()`; partnern läser dem i `checkPartner()` och markerar dem klara.
+  Förslag exporteras inte.
+- Kortet "Så funkar appen" (guide) i Inställningar: håll texten i takt med koden
+  (t.ex. `MIN_LOGGED_DAYS`, `MIN_GROUP`, 7-dagarsregeln för bortfall, AI-kollens fönster 21–23).
+
 ## Sync (section i)
 
 - Server: one generic table `records (user_id, store, key, data jsonb,
