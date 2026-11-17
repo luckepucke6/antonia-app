@@ -1114,6 +1114,33 @@
       text-decoration: underline;
       cursor: pointer;
     }
+
+    /* Fråga din dagbok (chatt i Mönster) */
+    .ask-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .ask-chips .chip { border: none; font-family: inherit; cursor: pointer; text-align: left; }
+    /* Syns inte, men läses upp av skärmläsare. */
+    .visually-hidden {
+      position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+      overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+    }
+    .ask-log { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+    .ask-bubble {
+      max-width: 88%;
+      padding: 9px 12px;
+      font-size: 0.95rem;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      border-radius: 14px;
+      color: var(--text);
+    }
+    .ask-bubble.me { align-self: flex-end; background: var(--accent-soft); }
+    .ask-bubble.bot { align-self: flex-start; background: var(--card); border: 1px solid var(--line); }
+    .ask-bubble.wait { color: var(--muted); font-style: italic; }
+    .ask-form { margin-top: 12px; }
+    .ask-form textarea { width: 100%; box-sizing: border-box; }
+    .ask-actions { display: flex; gap: 8px; }
+    .ask-actions .btn { width: auto; flex: 1; }
   </style>
 </head>
 
@@ -1257,6 +1284,10 @@
     <!-- 5. Mönster – kalender, statistik + läkarrapport -->
     <section id="view-monster" class="view">
       <div id="monster-content"></div>
+      <!-- Chatten ligger utanför monster-content så den inte nollställs vid synk. -->
+      <div id="ask-content"></div>
+      <!-- Stabil live-region utanför det som ritas om, så skärmläsare läser upp nya svar. -->
+      <div id="ask-live" class="visually-hidden" aria-live="polite"></div>
     </section>
 
     <!-- Partnerläge: begränsad översikt för den som dagboken delas med. -->
@@ -1327,6 +1358,14 @@
             <p>Om det liknar ett tidigare mönster dyker kortet "Känner du igen det här?"
             upp på Idag. Det är bara en puff, aldrig ett råd om medicin eller dos.
             Det är du och din läkare som bestämmer.</p>
+          </div>
+        </details>
+        <details>
+          <summary>Fråga din dagbok</summary>
+          <div>
+            <p>Längst ner under Mönster kan du ställa frågor om det du loggat det
+            senaste året. Frågan och din dagbok skickas då till Claude (AI från
+            Anthropic). Chatten sparas inte, och du får inga råd om dos.</p>
           </div>
         </details>
         <details>
@@ -1494,7 +1533,7 @@
       if (name === "idag") renderIdag();
       if (name === "medicin") renderMedicin();
       if (name === "blodningar") renderBleeding();
-      if (name === "monster") renderMonster();
+      if (name === "monster") { renderMonster(); renderAsk(); }
       // Fyll tidsvalen på nytt så de visar det som faktiskt är sparat.
       if (name === "installningar" && !partnerMode) fillNotisTider(document.getElementById("notis-tider"));
       if (name === "partner") renderPartner();
@@ -5149,6 +5188,7 @@
           renderSyncUI();
           if (!syncUser) {
             setSyncStatus("");
+            resetAsk();   // chatten hör till kontot
             exitPartnerMode();
             renderNotisUI();
             return;
@@ -5530,6 +5570,194 @@
         })
         .catch((err) => console.error("Kunde inte skapa demodata:", err));
     }
+
+
+    // ========================================================================
+    // (k) FRÅGA DIN DAGBOK – chatt i Mönster. Allt ligger bara i minnet
+    // (aldrig IndexedDB/localStorage/export). Servern: Edge Function fraga-dagboken.
+    // ========================================================================
+    const ASK_MAX_MESSAGES = 20;   // servern tillåter högst 20 meddelanden
+    const ASK_QUESTIONS = [
+      { label: "Sammanfatta senaste månaden",
+        text: "Kan du sammanfatta hur den senaste månaden har varit för mig, utifrån det jag loggat?" },
+      { label: "Vad hände förra gången efter uppehåll?",
+        text: "Vad hände förra gången efter att jag gjorde uppehåll i p-pillren? Hur mådde jag före, under och efter?" },
+      { label: "Inför läkarbesöket",
+        text: "Jag ska träffa läkaren snart. Kan du hjälpa mig sammanfatta det viktigaste från min dagbok att ta upp?" },
+      { label: "Hur har omgångarna gått?",
+        text: "Hur har mina medicinomgångar gått? Kan du se någon skillnad i hur jag mått under och mellan omgångarna?" },
+    ];
+    let askMessages = [];      // [{ role: "user" | "assistant", content }]
+    let askToday = null;       // datum när chatten startade
+    let askBusy = false;       // väntar på svar
+    let askNotice = "";        // vänlig text från grindar/fel (visas under chatten)
+    let askRetry = false;      // sista frågan kan skickas igen
+    let askDraft = "";         // text i rutan (överlever omritning)
+    const askContent = document.getElementById("ask-content");
+
+    // Rita hela chattkortet från minnet.
+    function renderAsk() {
+      const full = askMessages.length >= ASK_MAX_MESSAGES;
+      let html = '<div class="card"><strong>Fråga din dagbok</strong>' +
+        '<p class="hint">Bygger på det du loggat det senaste året. Du får inga råd om dos, ' +
+        'och det ersätter inte din läkare. När du frågar skickas din fråga och din dagbok ' +
+        'till Claude (AI från Anthropic).</p>' +
+        (DEMO_MODE ? '<p class="hint">Demoläge: frågan och den påhittade demodatan skickas till Claude. Ingen riktig data används.</p>' : "") +
+        '<p class="hint">Mår du väldigt dåligt? Ring 1177, vid akut fara 112.</p>';
+      if (askMessages.length === 0) {
+        // Frågeknappar visas bara när chatten är tom.
+        html += '<div class="ask-chips">' + ASK_QUESTIONS.map((q, i) =>
+          '<button type="button" class="chip" data-ask-q="' + i + '"' +
+          (askBusy ? " disabled" : "") + ">" + escapeHTML(q.label) + "</button>").join("") + "</div>";
+      } else {
+        html += '<div class="ask-log" role="log" aria-label="Samtal"' + (askBusy ? ' aria-busy="true"' : "") + ">" + askMessages.map((m) =>
+          '<div class="ask-bubble ' + (m.role === "user" ? "me" : "bot") + '">' +
+          escapeHTML(m.content) + "</div>").join("") +
+          (askBusy ? '<div class="ask-bubble bot wait">Tänker …</div>' : "") + "</div>";
+      }
+      if (askNotice) html += '<p class="hint" role="status">' + escapeHTML(askNotice) + "</p>";
+      if (full) {
+        html += '<p class="hint">Chatten är full. Starta en ny chatt för att fortsätta.</p>';
+      } else {
+        html += '<div class="ask-form"><textarea class="note" id="ask-input" aria-label="Din fråga" rows="2" maxlength="2000" ' +
+          'placeholder="Skriv din fråga …"' + (askBusy ? " disabled" : "") + ">" +
+          escapeHTML(askDraft) + "</textarea></div>";
+      }
+      html += '<div class="ask-actions">';
+      if (!full) html += '<button type="button" class="btn" data-ask="send"' + (askBusy ? " disabled" : "") + ">Skicka</button>";
+      if (askRetry && !askBusy && !full) html += '<button type="button" class="btn secondary" data-ask="retry">Försök igen</button>';
+      if (askMessages.length > 0) html += '<button type="button" class="btn secondary" data-ask="new"' + (askBusy ? " disabled" : "") + ">Ny chatt</button>";
+      html += "</div></div>";
+      askContent.innerHTML = html;
+    }
+
+    // Ritar om, läser upp senaste svar/meddelande och flyttar fokus till frågerutan.
+    function renderAskAnnounce(text) {
+      renderAsk();
+      document.getElementById("ask-live").textContent = text || "";
+      const inp = document.getElementById("ask-input");
+      if (inp && !inp.disabled) inp.focus({ preventScroll: true });
+    }
+
+    // Nollställ chatten (t.ex. vid utloggning) och rita om om vyn syns.
+    function resetAsk() {
+      askMessages = []; askToday = null; askNotice = ""; askRetry = false; askDraft = "";
+      document.getElementById("ask-live").textContent = "";
+      if (document.getElementById("view-monster").classList.contains("active")) renderAsk();
+      else askContent.innerHTML = "";
+    }
+
+    // Bygger de påhittade demoraderna från demodatabasen (getAll döljer borttagna).
+    async function buildDemoRows() {
+      const rows = [];
+      for (const r of await getAll("mood")) rows.push({ store: "mood", key: r.date, data: r, deleted_at: null });
+      for (const r of await getAll("courses")) rows.push({ store: "courses", key: String(r.omgangId), data: r, deleted_at: null });
+      for (const r of await getAll("bleeding")) rows.push({ store: "bleeding", key: String(r.uid || r.id), data: r, deleted_at: null });
+      for (const r of await getAll("notes")) {
+        // Bara snabbval, kartstarter och uppehåll behövs för frågorna.
+        if (r.key === "tags" || String(r.key).startsWith("ppiller:") || String(r.key).startsWith("ppaus:"))
+          rows.push({ store: "notes", key: r.key, data: r, deleted_at: null });
+      }
+      return rows;
+    }
+
+    // Gemensam sändning: rows = null i vanliga läget, annars demorader (+ demo: true).
+    async function askInvoke(rows) {
+      askBusy = true; renderAsk();
+      try {
+        const body = { today: askToday, messages: askMessages.map((m) =>
+          m.role === "assistant" ? { role: m.role, content: m.content.slice(0, 8000) } : m) };
+        if (rows) { body.demo = true; body.rows = rows; }
+        const { data, error } = await sb.functions.invoke("fraga-dagboken", { body });
+        if (error) throw error;
+        if (!data || typeof data.reply !== "string" || !data.reply.trim()) throw new Error("tomt svar");
+        askMessages.push({ role: "assistant", content: data.reply });
+      } catch (err) {
+        // Försök läsa serverns vänliga text; annars en allmän.
+        let msg = "";
+        try { const j = await err.context?.json?.(); msg = j && j.message ? String(j.message) : ""; } catch (_) {}
+        // Nätet försvann mitt i frågan: FunctionsFetchError från supabase-js (eller offline nu).
+        const netFail = !msg && (err && err.name === "FunctionsFetchError" || !navigator.onLine);
+        askNotice = msg || (netFail
+          ? "Jag kom inte fram – det verkar som att nätet försvann. Kolla anslutningen och försök igen."
+          : "Något gick fel när jag skulle fråga dagboken. Försök igen om en stund.");
+        askRetry = true;   // frågan ligger kvar
+      }
+      askBusy = false;
+    }
+
+    // Skicka (eller skicka igen) chattens meddelanden. Grindarna körs FÖRE allt nätanrop.
+    async function askSend() {
+      if (askBusy) return;
+      const last = askMessages[askMessages.length - 1];
+      if (!last || last.role !== "user") return;
+      askNotice = ""; askRetry = false;
+      // Har dygnet bytts sedan chatten startade bygger servern dagboken för dagens datum.
+      if (askToday && askToday !== todayISO()) askToday = todayISO();
+      if (DEMO_MODE) {
+        // Demoläge går före partnerläget: den riktiga appen används aldrig här.
+        // DEMO_MODE använder ENBART demodatabasen (DB_NAME = "antonia-dagbok-demo"),
+        // så raderna nedan är alltid påhittade. Servern läser aldrig databasen då.
+        if (!navigator.onLine) {
+          askNotice = "Du verkar vara offline. Frågor till dagboken kräver nät – försök igen sen.";
+          askRetry = true;
+        } else {
+          // sb kan vara null; onAuthStateChange registreras inte i demoläget, så syncUser används inte.
+          let session = null;
+          try { session = sb ? (await sb.auth.getSession()).data.session : null; } catch (_) {}
+          if (!session) {
+            askNotice = "Logga in (utanför demoläget) för att prova frågor med demodatan.";
+            askRetry = true;
+          } else {
+            await askInvoke(await buildDemoRows());
+          }
+        }
+      } else if (partnerMode) {
+        askNotice = "Det här finns bara i hennes egen app.";
+      } else if (!navigator.onLine) {
+        askNotice = "Du verkar vara offline. Frågor till dagboken kräver nät – försök igen sen.";
+        askRetry = true;
+      } else if (!sb || !syncUser) {
+        askNotice = "Logga in under Inställningar för att fråga din dagbok.";
+        askRetry = true;
+      } else {
+        await askInvoke(null);
+      }
+      // Läs upp det nya svaret eller meddelandet.
+      const lastMsg = askMessages[askMessages.length - 1];
+      renderAskAnnounce(askNotice || (lastMsg && lastMsg.role === "assistant" ? lastMsg.content : ""));
+    }
+
+    // Lägg till en fråga från hennes sida och skicka.
+    function askQuestion(text) {
+      const t = String(text || "").trim();
+      if (!t || askBusy) return;
+      if (askMessages.length === 0) askToday = todayISO();   // chatten startar nu
+      // Har förra frågan inte fått svar ersätts den (roller måste alternera).
+      if (askMessages.length && askMessages[askMessages.length - 1].role === "user") askMessages.pop();
+      askMessages.push({ role: "user", content: t.slice(0, 2000) });
+      askDraft = "";
+      askSend();
+    }
+
+    askContent.addEventListener("input", (e) => {
+      if (e.target.id === "ask-input") askDraft = e.target.value;
+    });
+    askContent.addEventListener("click", (e) => {
+      const q = e.target.closest("[data-ask-q]");
+      if (q) { askQuestion(ASK_QUESTIONS[Number(q.dataset.askQ)].text); return; }
+      const b = e.target.closest("[data-ask]");
+      if (!b) return;
+      const act = b.dataset.ask;
+      if (act === "send") {
+        const inp = document.getElementById("ask-input");
+        askQuestion(inp ? inp.value : askDraft);
+      } else if (act === "retry") {
+        askSend();
+      } else if (act === "new") {
+        resetAsk();
+      }
+    });
 
     // Öppna databasen direkt så stores skapas vid första start, och försök
     // sedan med en best-effort morgon-notis (sekundärt – se påminnelse-blocket).
