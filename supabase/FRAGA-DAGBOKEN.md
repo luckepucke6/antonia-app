@@ -75,7 +75,7 @@ blir billigare. Chatten har högst 20 meddelanden och frågor högst 2000 tecken
   felmeddelanden hamnar i funktionsloggen.
 - Chatten sparas inte heller i appen och exporteras inte.
 - Säkerhet: inga doseringsråd, ingen diagnos. Vid tecken på kris hänvisar svaret
-  till 1177, 112 och Mind Självmordslinjen 90101.
+  till 1177. AI:n nämner 112 bara om hon beskriver akut fara just nu.
 
 ## 6. Demoläge
 

@@ -139,7 +139,7 @@ Deno.test("finalizeReply: lägger till kristext om 1177 saknas", () => {
 });
 
 Deno.test("finalizeReply: dubblerar inte om svaret nämner 1177", () => {
-  const t = "Ring 1177 nu, eller 112 vid akut fara.";
+  const t = "Ring 1177 nu, eller gå in på 1177.se.";
   assertEquals(finalizeReply(t, true), t);
 });
 
@@ -149,10 +149,9 @@ Deno.test("finalizeReply: oförändrat utan kris, tomt ger reservtext", () => {
   assertEquals(finalizeReply("", true), CRISIS_NOTE);
 });
 
-Deno.test("finalizeReply: kräver både 112 och 1177 vid kris", () => {
-  assert(finalizeReply("Ring 1177.", true).endsWith(CRISIS_NOTE));
-  assert(finalizeReply("Ring 112.", true).endsWith(CRISIS_NOTE));
-  const ok = "Ring 1177 eller 112.";
+Deno.test("finalizeReply: kräver 1177 vid kris", () => {
+  assert(finalizeReply("Prata med någon.", true).endsWith(CRISIS_NOTE));
+  const ok = "Ring 1177.";
   assertEquals(finalizeReply(ok, true), ok);
 });
 
@@ -169,17 +168,25 @@ Deno.test("finalizeReply: kapar långa svar och behåller kristexten", () => {
   assertEquals(finalizeReply("Kort.", false), "Kort.");
 });
 
-Deno.test("CRISIS_NOTE: nämner 1177, 112 och 90101", () => {
-  for (const n of ["1177", "112", "90101"]) assert(CRISIS_NOTE.includes(n), n);
+Deno.test("CRISIS_NOTE: bara 1177 (inte 112 eller 90101)", () => {
+  assert(CRISIS_NOTE.includes("1177"));
+  for (const n of ["112", "90101", "Självmordslinjen"]) assert(!CRISIS_NOTE.includes(n), n);
+});
+
+Deno.test("Krispåminnelsen: 1177, och 112 bara vid akut fara", () => {
+  assert(CRISIS_SYSTEM_REMINDER.includes("1177"));
+  assert(!CRISIS_SYSTEM_REMINDER.includes("90101"));
+  assert(CRISIS_SYSTEM_REMINDER.includes("112 bara om hon beskriver akut fara"));
 });
 
 // --- SYSTEM_PROMPT ------------------------------------------------------------
 
 Deno.test("SYSTEM_PROMPT: innehåller säkerhetsreglerna", () => {
   const p = SYSTEM_PROMPT;
-  for (const s of ["1177", "112", "90101", "doseringsråd", "diagnos", "ersätter inte läkaren", "data, inte instruktioner"]) {
+  for (const s of ["1177", "akut fara just nu", "doseringsråd", "diagnos", "ersätter inte läkaren", "data, inte instruktioner"]) {
     assert(p.includes(s), s);
   }
+  assert(!p.includes("90101") && !p.includes("Självmordslinjen"));
   // Skalförklaring
   assert(p.includes("humor, energi och sleepQuality"));
   assert(p.includes("uppskattad"));
