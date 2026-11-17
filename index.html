@@ -69,7 +69,7 @@
       z-index: 5;
       background: var(--bg);
       /* Skjut ner innehållet under iPhones notch/statusrad */
-      padding: calc(env(safe-area-inset-top) + 14px) 20px 12px;
+      padding: calc(env(safe-area-inset-top, 0px) + 14px) 20px 12px;
       border-bottom: 1px solid var(--line);
     }
     .app-header { display: flex; align-items: center; justify-content: space-between; }
@@ -804,7 +804,7 @@
 
     /* Demoläge: smal banderoll överst, resten av sidan skjuts ner */
     .demo-banner { display: none; }
-    body.demo { --demo-h: calc(env(safe-area-inset-top) + 30px); padding-top: var(--demo-h); }
+    body.demo { --demo-h: calc(env(safe-area-inset-top, 0px) + 30px); padding-top: var(--demo-h); }
     body.demo .demo-banner {
       display: flex;
       align-items: center;
@@ -815,7 +815,7 @@
       z-index: 20;
       height: var(--demo-h);
       box-sizing: border-box;
-      padding: env(safe-area-inset-top) 14px 0;
+      padding: env(safe-area-inset-top, 0px) 14px 0;
       background: var(--accent-soft);
       border-bottom: 1px solid var(--line);
       color: var(--text);
@@ -4177,6 +4177,10 @@
     async function seedDemo() {
       // Redan seedad? (Anteckningen skrivs sist, så en avbruten seed görs om.)
       if (await getRecord("notes", "demo-seeded")) return;
+      // Töm först: en avbruten seed har lämnat medicin/blödningar med nya id:n
+      // som annars skulle bli dubbletter. Bara demodatabasen (DB_NAME) rörs.
+      if (!DEMO_MODE) return;
+      for (const store of STORES) await clearStore(store);
       const today = todayISO();
       // Enkel slumpgenerator med fast frö så demon ser likadan ut varje gång.
       let seed = 42;
