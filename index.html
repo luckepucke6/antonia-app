@@ -439,6 +439,19 @@
       pointer-events: none;
       transition: opacity 0.25s ease, transform 0.25s ease;
     }
+    /* Bubbla med knapp (t.ex. Ångra): klickbar och med knapp i samma färg som texten. */
+    .toast.has-action { pointer-events: auto; }
+    .toast-action {
+      margin-left: 14px;
+      padding: 4px 8px;
+      font: inherit;
+      font-weight: 700;
+      color: var(--toast-text);
+      background: transparent;
+      border: none;
+      text-decoration: underline;
+      cursor: pointer;
+    }
     .toast.show {
       opacity: 1;
       transform: translateX(-50%) translateY(0);
@@ -1013,8 +1026,8 @@
 
     /* Varm hälsning + datum högst upp. */
     .greeting {
-      margin-top: 4px;
-      font-size: 1.35rem;
+      margin-top: 0;
+      font-size: 1.2rem;
       font-weight: 650;
       letter-spacing: -0.01em;
     }
@@ -1089,12 +1102,40 @@
       .support-fold > summary .card-link-arrow { transition: none; }
     }
 
-    /* "Omgång pågår – dag X" – framträdande men inte gigantisk. */
-    .idag-med-head {
-      margin: 6px 0 2px;
-      font-size: 1.2rem;
-      font-weight: 700;
-      letter-spacing: -0.01em;
+    /* Statusbrickor överst på Idag: radbryts, aldrig horisontell scroll. */
+    /* Högst 3 brickor i lika breda kolumner: alltid en rad, texten får radbrytas inuti. */
+    .status-chips {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(0, 1fr);
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .status-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+      justify-content: center;
+      text-align: center;
+      line-height: 1.25;
+      padding: 8px 10px;
+      font: inherit;
+      font-size: 0.86rem;
+      font-weight: 600;
+      color: var(--text);
+      background: var(--accent-soft);
+      border: none;
+      border-radius: 14px;
+      overflow-wrap: anywhere;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .status-chip:active { opacity: 0.85; }
+    .status-chip.ok { color: var(--ok-fg); background: var(--ok-bg); }
+    /* "Klart för idag"-raden under skalorna. */
+    .quick-done {
+      margin-top: 14px;
+      font-weight: 650;
     }
 
     /* Notistider (Inställningar + intro): etikett + välj timme */
@@ -1335,6 +1376,8 @@
             Snabbval här i Inställningar.</p>
             <p>Dagar som är uppskattade i efterhand (utifrån gamla anteckningar) visas
             som uppskattade. De blir vanliga dagar först när du sparar dem själv.</p>
+            <p>Överst på Idag visar små brickor medicin, ev. paus och blödning. Ett tryck
+            på medicinbrickan bockar av dagens tablett – ångra direkt om det blev fel.</p>
             <p>Tom ruta betyder bara att du inte loggat. Det är helt okej.</p>
           </div>
         </details>
@@ -2332,12 +2375,28 @@
 
     // Liten bekräftelse-bubbla (återanvändbar av andra vyer).
     let _toastTimer = null;
-    function showToast(msg) {
+    // action = { label, onClick } är valfri: visar en knapp i bubblan och låter den stå kvar ~5 s.
+    function showToast(msg, action) {
       const el = document.getElementById("toast");
       el.textContent = msg;
+      el.classList.toggle("has-action", !!action);
+      if (action) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "toast-action";
+        btn.textContent = action.label;
+        btn.addEventListener("click", () => {
+          el.classList.remove("show", "has-action");
+          clearTimeout(_toastTimer);
+          action.onClick();
+        });
+        el.appendChild(btn);
+      }
       el.classList.add("show");
       clearTimeout(_toastTimer);
-      _toastTimer = setTimeout(() => el.classList.remove("show"), 1600);
+      _toastTimer = setTimeout(() => {
+        el.classList.remove("show", "has-action");
+      }, action ? 5000 : 1600);
     }
 
     // Bygg raderna och ladda dagens post direkt så vyn är redo.
@@ -2739,20 +2798,42 @@
     }
 
     // Bocka dagens dos i den pågående omgången.
-    async function logToday() {
-      const active = await getActiveCourse();
-      if (!active) return;
-      const today = todayISO();
-      const days = await getDaysFor(active.omgangId);
-      if (days.some((d) => d.date === today)) {
-        showToast("Redan bockad idag");
+    // Anrop köas så att två snabba tryck inte kan skapa två poster för samma dag.
+    // dose (valfri): används i stället för dosvalet i Medicin-vyn (Idag skickar DEFAULT_DOSE).
+    // Returnerar den skapade postens id, eller null om inget loggades.
+    // onUndo (valfri): om given visas "Ångra" i bubblan och onUndo körs efter ångrad post.
+    let logTodayChain = Promise.resolve();
+    function logToday(dose, onUndo) {
+      const run = logTodayChain.then(async () => {
+        const active = await getActiveCourse();
+        if (!active) return null;
+        const today = todayISO();
+        const days = await getDaysFor(active.omgangId);
+        if (days.some((d) => d.date === today)) {
+          showToast("Redan bockad idag");
+          await renderMedicin();
+          return null;
+        }
+        if (dose == null) dose = getSelectedDose(document.getElementById("dose-today"));
+        const id = await addRecord("medication", { date: today, omgangId: active.omgangId, dos: dose });
+        if (onUndo) {
+          // Ångra: mjukradera just den här posten och rita om.
+          showToast("Bockad för idag ✓", {
+            label: "Ångra",
+            onClick: async () => {
+              await deleteRecord("medication", id);
+              await onUndo();
+            },
+          });
+        } else {
+          showToast("Bockad för idag ✓");
+        }
         await renderMedicin();
-        return;
-      }
-      const dose = getSelectedDose(document.getElementById("dose-today"));
-      await addRecord("medication", { date: today, omgangId: active.omgangId, dos: dose });
-      showToast("Bockad för idag ✓");
-      await renderMedicin();
+        return id;
+      });
+      // Kedjan får aldrig fastna i ett avvisat läge.
+      logTodayChain = run.catch(() => null);
+      return run;
     }
 
     // Logga en glömd dag bakåt i tiden (inom omgångens intervall).
@@ -3341,7 +3422,6 @@
     }
 
     // Snabbloggning: fyra skalor som sparas direkt vid varje tryck.
-    let quickOpen = false;     // skalorna utfällda trots att alla fyra är ifyllda
     let quickFlash = false;    // visar en diskret bock efter senaste sparning
 
     // En skalrad. Samma utseende som i Mående (.metric/.faces/.face);
@@ -3372,19 +3452,15 @@
       const done = filled === QUICK_KEYS.length;
       const flash = quickFlash ? ' <span class="quick-ok" aria-label="Sparat">✓</span>' : "";
 
+      // Alla fyra skalor syns alltid, med hennes val markerade.
       let html = '<div class="card" id="quick-card">';
+      html += '<div class="support-title">Hur är det idag?' + flash + "</div>";
+      html += '<p class="status-sub" style="margin:6px 0 0">Fyra tryck räcker.</p>';
+      html += metrics.map((m) => quickRow(m, scores[m.id])).join("");
+      // När alla fyra är ifyllda: en lugn avslutning med väg till Mående.
       if (done) {
-        html += '<div class="support-title">Klart för idag 💗' + flash + "</div>";
-        html += '<p class="status-sub" style="margin:6px 0 0">' +
-          "Orkar du så kan du fylla i mer – det gör mönstren tydligare.</p>";
-        html += '<button type="button" class="btn secondary" data-act="mood">Fyll i mer</button>';
-        html += '<button type="button" class="text-btn" data-act="quick-toggle">' +
-          (quickOpen ? "Dölj" : "Ändra") + "</button>";
-        if (quickOpen) html += metrics.map((m) => quickRow(m, scores[m.id])).join("");
-      } else {
-        html += '<div class="support-title">Hur har dagen varit?' + flash + "</div>";
-        html += '<p class="status-sub" style="margin:6px 0 0">Fyra tryck räcker.</p>';
-        html += metrics.map((m) => quickRow(m, scores[m.id])).join("");
+        html += '<div class="quick-done">Klart för idag 💗</div>';
+        html += '<button type="button" class="btn secondary" data-act="mood">Fyll i mer i Mående</button>';
       }
       return html + "</div>";
     }
@@ -3392,6 +3468,7 @@
     // Spara ett tryck direkt: slå ihop med dagens post och bevara allt annat.
     // Köas så att snabba tryck i rad inte skriver över varandra.
     let quickChain = Promise.resolve();
+    let medBusy = false;   // true medan medicinbrickan loggar (dubbeltrycksskydd)
     function quickSave(id, value) {
       quickChain = quickChain.then(async () => {
         const today = todayISO();
@@ -3428,55 +3505,56 @@
       return quickChain;
     }
 
-    // Bygg "Medicin"-kortet (pågående omgång vs ingen).
-    function buildIdagMed(courses, meds, today) {
+    // Statusbrickor överst på Idag: medicin, ev. paus och blödning.
+    // Varje bricka är en knapp; inget rött och ingen "saknas"-ton.
+    function buildIdagChips(courses, meds, pauses, bleed, today) {
       const active = courses.find((c) => c.active) || null;
-      let html = '<div class="card">';
-      html += '<div class="status-eyebrow">Medicin</div>';
+      let html = '<div class="status-chips">';
 
+      // Medicin: tryck loggar dagens dos, eller öppnar Medicin.
       if (active) {
         const days = meds.filter((m) => m.omgangId === active.omgangId);
         const tagen = days.some((d) => d.date === today);
-        html += '<div class="idag-med-head">Omgång pågår – dag ' + days.length + "</div>";
         if (tagen) {
-          html += '<div class="taken-today">✓ Tagen idag</div>';
+          html += '<button type="button" class="status-chip ok" data-act="med-open" ' +
+            'aria-label="Tagen idag. Öppnar Medicin">💊 Tagen idag ✓</button>';
         } else {
-          html += '<p class="status-sub" style="margin:6px 0 0">Dagens dos är inte bockad ännu.</p>';
-          html += '<button type="button" class="btn big" data-act="med-today">Jag tog den idag</button>';
+          // Dagens dos är inte loggad än, så det blir dos nummer days.length + 1.
+          const n = days.length + 1;
+          html += '<button type="button" class="status-chip" data-act="med-today" ' +
+            'aria-label="Dag ' + n + ' · Tog den? Loggar dagens tablett">' +
+            "💊 Dag " + n + " · Tog den?</button>";
         }
       } else {
-        html += '<p class="status-sub" style="margin:6px 0 0">Ingen omgång pågår just nu.</p>';
-        // Dagar sedan den senast avslutade omgången, om någon finns.
-        const ended = courses.filter((c) => !c.active && c.slutdatum);
-        if (ended.length) {
-          const lastSlut = ended.reduce(
-            (mx, c) => (c.slutdatum > mx ? c.slutdatum : mx), ended[0].slutdatum
-          );
-          html += '<p class="status-sub" style="margin:4px 0 0">' +
-            dagar(daysBetween(lastSlut, today)) + " sedan senaste omgången.</p>";
-        }
+        html += '<button type="button" class="status-chip" data-act="med-open" ' +
+          'aria-label="Ingen omgång. Öppnar Medicin">💊 Ingen omgång</button>';
       }
-      return html + "</div>";
-    }
 
-    // Diskret rad när ett uppehåll i p-pillren pågår (klickbar → Medicin).
-    function buildIdagPause(pauses, today) {
+      // Paus: bara under pågående uppehåll i p-pillren.
       const ap = activePause(pauses);
-      if (!ap) return "";
-      return '<button type="button" class="card-link" data-act="pause">' +
-        "<span>⏸ Uppehåll i p-pillren – dag " + (daysBetween(ap.start, today) + 1) +
-        '</span><span class="card-link-arrow">›</span></button>';
-    }
+      if (ap) {
+        const n = daysBetween(ap.start, today) + 1;
+        html += '<button type="button" class="status-chip" data-act="pause" ' +
+          'aria-label="Paus dag ' + n + '. Öppnar Medicin">⏸ Paus dag ' + n + "</button>";
+      }
 
-    // Bygg blödningsraden (klickbar → öppnar Blödningar-vyn).
-    function buildIdagBleed(bleed, today) {
-      const rec = bleed.find((b) => b.date === today);
-      const text = rec
-        ? "Blödning loggad idag · " + bleedTypeLabel(rec.type) +
-          ", " + bleedFlowLabel(rec.flow).toLowerCase()
-        : "Ingen blödning loggad idag";
-      return '<button type="button" class="card-link" data-act="blod">' +
-        '<span>🩸 ' + text + "</span><span class=\"card-link-arrow\">›</span></button>";
+      // Blödning: kort typ + flöde för dagens kraftigaste post, eller "Ingen idag".
+      const flowRank = { spotting: 1, latt: 2, medel: 3, rikligt: 4 };
+      const shortType = { mellanblodning: "Mellan", framslappt: "Framsläppt", bortfall: "Bortfall" };
+      let rec = null;
+      bleed.filter((b) => b.date === today).forEach((b) => {
+        if (!rec || (flowRank[b.flow] || 0) > (flowRank[rec.flow] || 0)) rec = b;
+      });
+      let bleedText = "Ingen idag";
+      if (rec) {
+        const flow = bleedFlowLabel(rec.flow);   // redan med stor bokstav
+        // Okänd/normal typ (t.ex. vanlig mens) visas som "Mens".
+        bleedText = (shortType[rec.type] || "Mens") + " · " + flow;
+      }
+      html += '<button type="button" class="status-chip" data-act="blod" ' +
+        'aria-label="' + bleedText + '. Öppnar Blödningar">🩸 ' + bleedText + "</button>";
+
+      return html + "</div>";
     }
 
     /* --- Stöd vid tyngre perioder ---
@@ -3691,13 +3769,11 @@
       // snabbloggningen så den är lätt att hitta. Annars: diskret rad längst ner.
       const supportFold = support.startsWith("<details");
       const supportTop = supportFold && isLowPeriod(recentMood);
+      html += buildIdagChips(courses, meds, pauses, bleed, today);
       html += buildIdagMood(moodRec);
       if (supportTop) html += support;
       html += buildSignal(signal, courses, today);
-      html += buildIdagMed(courses, meds, today);
-      // Diskreta rader längst ner: uppehåll, blödning, undvik, stöd.
-      html += buildIdagPause(pauses, today);
-      html += buildIdagBleed(bleed, today);
+      // Längst ner: undvik och (om inte tung period) stödraden.
       html += buildAvoid((avoid && avoid.text) || "");
       if (!supportTop) html += support;
       quickFlash = false;
@@ -3727,18 +3803,27 @@
           loadMoodForDate(todayISO());        // se till att Mående visar idag
           showView("maende", "Mående");
           break;
-        case "quick-toggle":
-          quickOpen = !quickOpen;
-          await renderIdag();
-          break;
         case "med-today":
-          await logToday();                   // använder DEFAULT_DOSE (snabbknapp)
-          await renderIdag();
+          // Skydd mot dubbeltryck medan loggningen pågår.
+          if (medBusy) break;
+          medBusy = true;
+          actEl.disabled = true;
+          try {
+            // Snabbknapp: DEFAULT_DOSE, med Ångra i bubblan (ritar om Idag och ev. Medicin).
+            await logToday(DEFAULT_DOSE, async () => {
+              await renderIdag();
+              if (currentView === "medicin") await renderMedicin();
+            });
+            await renderIdag();
+          } finally {
+            medBusy = false;
+          }
           break;
         case "blod":
           showView("blodningar", "Blödningar");
           break;
         case "pause":
+        case "med-open":
           showView("medicin", "Medicin");
           break;
         case "support-open":
