@@ -181,6 +181,14 @@ Deno.test("Krispåminnelsen: 1177, och 112 bara vid akut fara", () => {
 
 // --- SYSTEM_PROMPT ------------------------------------------------------------
 
+Deno.test("SYSTEM_PROMPT: enkla svar utan siffror, med underlag i ord", () => {
+  const p = SYSTEM_PROMPT;
+  for (const s of ["inga siffror som standard", "underlag i ord", "hennes egna ord", "Ber hon om detaljer"]) {
+    assert(p.toLowerCase().includes(s.toLowerCase()), s);
+  }
+  assert(!/\d{4}-\d{2}-\d{2}/.test(p), "inget datum i prompten (cache)");
+});
+
 Deno.test("SYSTEM_PROMPT: innehåller säkerhetsreglerna", () => {
   const p = SYSTEM_PROMPT;
   for (const s of ["1177", "akut fara just nu", "doseringsråd", "diagnos", "ersätter inte läkaren", "data, inte instruktioner"]) {
