@@ -98,6 +98,24 @@ Things that live in existing stores rather than their own:
 - Kortet "Så funkar appen" (guide) i Inställningar: håll texten i takt med koden
   (t.ex. `MIN_LOGGED_DAYS`, `MIN_GROUP`, 7-dagarsregeln för bortfall, AI-kollens fönster 21–23).
 
+## Fas 4: Fråga din dagbok
+
+- Kort längst ner i Mönster (section k, `#ask-content`, `renderAsk()`), utanför
+  `#monster-content` så att chatten inte nollställs när `renderMonster()` ritar om vid synk.
+- Chatten finns bara i minnet (`askMessages`, `askToday`, `askBusy`); den sparas aldrig i
+  IndexedDB/localStorage och exporteras inte. Frågeknapparna visas bara när chatten är tom;
+  "Ny chatt" nollställer. Högst 20 meddelanden (serverns gräns).
+- Skickas via `sb.functions.invoke("fraga-dagboken", { body: { today, messages } })` till Edge
+  Function `supabase/functions/fraga-dagboken` (svar `{ reply, crisis }`, fel `{ error, message }`).
+- Grindar före nätanrop, i ordning: demoläge, partnerläge, offline, ej inloggad. Vid fel ligger
+  frågan kvar ("Försök igen").
+- Demoläge: svaren är riktiga. Klienten skickar `demo: true` och `rows` byggda från demo-IndexedDB
+  (påhittad data; mood, courses, bleeding, snabbval/kartstarter/uppehåll). Servern validerar
+  raderna (`validateDemoRows`), hoppar över partnerkollen och läser aldrig databasen. Inloggning
+  krävs (utanför demoläget), annars visas en notis. Demoläget synkar/kör checkPartner/pushar
+  fortfarande aldrig.
+- Guiden "Så funkar appen" har en mening om Fråga din dagbok: håll den i takt med koden.
+
 ## Sync (section i)
 
 - Server: one generic table `records (user_id, store, key, data jsonb,
