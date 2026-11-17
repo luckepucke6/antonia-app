@@ -166,7 +166,10 @@ Setup steps (VAPID keys, Edge Function, schedule) are in
   (a level per day, medication days, courses, `text_partner`) — never notes,
   tags or individual scores. The partner view itself now shows only: a short
   "Idag" card ("Loggat idag ✓" + today's level: heavier / okay / good; or "Inte
-  loggat idag än." + the last logged day before today and its level), the
+  loggat idag än." + the last logged day before today and its level; an ⓘ on
+  the status line shows timestamps: `last_mood` = {date, logged_at (her
+  `updatedAt`), synced_at (server `updated_at`)} from `partner_overview()`
+  (`supabase/partner-tid.sql`) and `fetchedAt` set by `checkPartner()`), the
   signal card (`text_partner`) and the shared "helps" card (heavier period only),
   plus her feedback. Medicine, 7-day trend/bars and the month calendar were removed
   from the UI; the RPC still returns them (trimming `partner_overview()` is a

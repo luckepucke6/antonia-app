@@ -111,6 +111,7 @@ declare
   v_share   jsonb;
   v_helps_n jsonb;
   v_heavy   boolean;
+  v_last    jsonb;
 begin
   -- Vems dagbok får den inloggade titta på? (Finns flera: den första.)
   select s.owner into v_owner
@@ -265,8 +266,25 @@ begin
     end if;
   end if;
 
+  -- Senaste loggade dagen: när hon sparade den (appens updatedAt) och när den
+  -- kom fram till servern (updated_at). Bara tidpunkter, inga värden.
+  select jsonb_build_object(
+           'date',      r.key,
+           'logged_at', r.data -> 'updatedAt',
+           'synced_at', r.updated_at)
+  into v_last
+  from public.records r
+  where r.user_id = v_owner
+    and r.store = 'mood'
+    and r.deleted_at is null
+    and (r.data ->> 'deletedAt') is null
+    and r.key ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+  order by r.key desc
+  limit 1;
+
   return jsonb_build_object(
     'owner',   v_owner,
+    'last_mood', v_last,    -- null om inget är loggat
     'days',    v_days,
     'areas7',  v_areas7,
     'courses', v_courses,
