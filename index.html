@@ -5209,16 +5209,18 @@
           // Hennes förslag (partnern får läsa dem). Fel ignoreras: tabellen kan saknas.
           let fb = (partnerData && partnerData.feedback) || [];
           try {
-            // Alla öppna förslag, men bara de 20 senast fixade.
-            const cols = "id,text,created_at,done_at";
-            const [open, done] = await Promise.all([
-              sb.from("feedback").select(cols).is("done_at", null)
+            // Alla öppna förslag, men bara de 20 senast fixade och 20 senast arkiverade.
+            const cols = "id,text,created_at,done_at,archived_at";
+            const [open, done, arch] = await Promise.all([
+              sb.from("feedback").select(cols).is("done_at", null).is("archived_at", null)
                 .order("created_at", { ascending: false }),
-              sb.from("feedback").select(cols).not("done_at", "is", null)
+              sb.from("feedback").select(cols).not("done_at", "is", null).is("archived_at", null)
                 .order("done_at", { ascending: false }).limit(20),
+              sb.from("feedback").select(cols).not("archived_at", "is", null)
+                .order("archived_at", { ascending: false }).limit(20),
             ]);
-            if (!open.error && !done.error && Array.isArray(open.data) && Array.isArray(done.data)) {
-              fb = open.data.concat(done.data)
+            if (![open, done, arch].some((r) => r.error || !Array.isArray(r.data))) {
+              fb = open.data.concat(done.data, arch.data)
                 .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
             }
           } catch (_) { /* behåll tidigare */ }
@@ -5334,20 +5336,27 @@
       // Förslag från Antonia: öppna först, fixade i en fällbar lista.
       const fbs = Array.isArray(d.feedback) ? d.feedback : [];
       if (fbs.length) {
-        const item = (f, label, act) =>
+        // btns = [[etikett, act], …]
+        const item = (f, btns) =>
           '<div class="fb-item"><div class="fb-text">' + escapeHTML(f.text) + "</div>" +
           '<div class="fb-meta">' + fmtLong(isoFromDate(new Date(f.created_at))) + "</div>" +
-          '<button type="button" class="mini-btn" data-act="' + act + '" data-id="' +
-          escapeHTML(f.id) + '" style="margin-top:6px">' + label + "</button></div>";
-        const open = fbs.filter((f) => !f.done_at);
-        const done = fbs.filter((f) => f.done_at);
+          '<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap">' +
+          btns.map(([label, act]) =>
+            '<button type="button" class="mini-btn" data-act="' + act + '" data-id="' +
+            escapeHTML(f.id) + '">' + label + "</button>").join("") + "</div></div>";
+        const fold = (title, list, btns) =>
+          '<details style="margin-top:8px"><summary style="cursor:pointer;font-weight:600">' +
+          title + " (" + list.length + ")</summary>" +
+          list.map((f) => item(f, btns)).join("") + "</details>";
+        const open = fbs.filter((f) => !f.done_at && !f.archived_at);
+        const done = fbs.filter((f) => f.done_at && !f.archived_at);
+        const arch = fbs.filter((f) => f.archived_at);
         html += '<div class="card"><div class="status-eyebrow">Förslag från Antonia</div>';
-        html += open.length ? open.map((f) => item(f, "Klar", "fb-done")).join("")
+        html += open.length
+          ? open.map((f) => item(f, [["Klar", "fb-done"], ["Arkivera", "fb-archive"]])).join("")
           : '<p class="hint" style="margin:8px 0 0">Inga öppna förslag just nu.</p>';
-        if (done.length)
-          html += '<details style="margin-top:8px"><summary style="cursor:pointer;font-weight:600">' +
-            "Fixade (" + done.length + ")</summary>" +
-            done.map((f) => item(f, "Ångra", "fb-undo")).join("") + "</details>";
+        if (done.length) html += fold("Fixade", done, [["Ångra", "fb-undo"], ["Arkivera", "fb-archive"]]);
+        if (arch.length) html += fold("Arkiverade", arch, [["Återställ", "fb-unarchive"]]);
         html += "</div>";
       }
 
@@ -5383,6 +5392,26 @@
           showToast(done ? "Markerat som klart ✓" : "Ångrat ✓");
         } catch (err) {
           console.warn("Kunde inte uppdatera förslaget:", err);
+          showToast("Kunde inte spara – försök igen");
+        }
+        return;
+      }
+      // Arkivera ett förslag (eller återställ det).
+      const arBtn = e.target.closest('[data-act="fb-archive"], [data-act="fb-unarchive"]');
+      if (arBtn) {
+        const archive = arBtn.dataset.act === "fb-archive";
+        const id = arBtn.dataset.id;
+        try {
+          const { data: updated, error } = await sb.rpc("feedback_archive", { p_id: id, p_archived: archive });
+          if (error) throw error;
+          if (updated !== true) throw new Error("ingen rad uppdaterades");
+          const f = ((partnerData && partnerData.feedback) || []).find((x) => x.id === id);
+          if (f) f.archived_at = archive ? new Date().toISOString() : null;
+          localStorage.setItem("partner-cache", JSON.stringify(partnerData));
+          renderPartner();
+          showToast(archive ? "Arkiverat ✓" : "Återställt ✓");
+        } catch (err) {
+          console.warn("Kunde inte arkivera förslaget:", err);
           showToast("Kunde inte spara – försök igen");
         }
         return;
