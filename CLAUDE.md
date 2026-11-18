@@ -111,6 +111,10 @@ Things that live in existing stores rather than their own:
   förslag ligger lokalt i `localStorage` `feedback` (`lsKey`) och skickas av
   `flushFeedback()`; partnern läser dem i `checkPartner()` och markerar dem klara.
   Förslag exporteras inte.
+- Partnern kan arkivera förslag (öppna eller fixade): kolumnen `archived_at` + RPC
+  `feedback_archive(p_id, p_archived)` från `supabase/feedback-arkiv.sql` (måste köras
+  innan appen läser kolumnen). Arkiverade visas i en egen fällbar lista med "Återställ";
+  hennes egen lista påverkas inte.
 - Kortet "Så funkar appen" (guide) i Inställningar: håll texten i takt med koden
   (t.ex. `MIN_LOGGED_DAYS`, `MIN_GROUP`, 7-dagarsregeln för bortfall, AI-kollens fönster 21–23).
 
