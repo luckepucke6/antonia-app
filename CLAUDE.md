@@ -190,7 +190,10 @@ Setup steps (VAPID keys, Edge Function, schedule) are in
   from the UI; the RPC still returns them (trimming `partner_overview()` is a
   possible later SQL change). Body class `partner` swaps the tab bar for one
   "Översikt" tab (`view-partner`, `renderPartner`). Nothing goes into
-  IndexedDB; the overview is cached in `localStorage` (`partner-user`,
+  IndexedDB; the "helps" card has "Arkivera", which hides it on his device until
+  her text changes (`localStorage` `partner-helps-hidden` = the hidden text). The
+  signal push to the partner already exists in `daglig-koll` (`viewersOf`); it only
+  needs his push subscription. The overview is cached in `localStorage` (`partner-user`,
   `partner-cache`) for offline use, and `sync()` is skipped while in partner mode.
 
 ## Demo mode (developer)
