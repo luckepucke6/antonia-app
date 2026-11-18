@@ -5328,9 +5328,16 @@
         const x = dayBy.get(shiftDate(today, -i));
         return x && x.level != null && levelClass(Number(x.level)) === "tung";
       }).length;
+      // Arkiverat = dolt tills hon ändrar texten (bara i hans telefon).
       if (d.helps && (active || recentSignal || heavyDays >= 2)) {
-        html += '<div class="card"><div class="support-title">Det här brukar hjälpa henne 💗</div>' +
-          '<div class="partner-helps">' + escapeHTML(d.helps) + "</div></div>";
+        if (localStorage.getItem("partner-helps-hidden") === d.helps) {
+          html += '<button type="button" class="text-btn" data-act="helps-show" style="margin:0 4px 12px">' +
+            "Visa 'Det här brukar hjälpa henne'</button>";
+        } else {
+          html += '<div class="card"><div class="support-title">Det här brukar hjälpa henne 💗</div>' +
+            '<div class="partner-helps">' + escapeHTML(d.helps) + "</div>" +
+            '<button type="button" class="mini-btn" data-act="helps-hide" style="margin-top:8px">Arkivera</button></div>';
+        }
       }
 
       // Förslag från Antonia: öppna först, fixade i en fällbar lista.
@@ -5394,6 +5401,18 @@
           console.warn("Kunde inte uppdatera förslaget:", err);
           showToast("Kunde inte spara – försök igen");
         }
+        return;
+      }
+      // Arkivera "Det här brukar hjälpa henne" (eller visa igen).
+      if (e.target.closest('[data-act="helps-hide"]')) {
+        if (partnerData && partnerData.helps) localStorage.setItem("partner-helps-hidden", partnerData.helps);
+        renderPartner();
+        showToast("Arkiverat ✓");
+        return;
+      }
+      if (e.target.closest('[data-act="helps-show"]')) {
+        localStorage.removeItem("partner-helps-hidden");
+        renderPartner();
         return;
       }
       // Arkivera ett förslag (eller återställ det).
